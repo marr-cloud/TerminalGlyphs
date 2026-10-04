@@ -55,6 +55,12 @@ Describe 'Get-ConfigPath' {
 }
 
 Describe 'Initialize-TerminalGlyph' {
+    It 'normalizes user color names to upper-case hex without #' {
+        Set-TestConfig '{ "colors": { "files": { "extensions": { ".go": "#00add8" } } } }' | Out-Null
+        Initialize-ForTest | Should -BeNullOrEmpty
+        (Resolve-ForTest 'main.go').ColorName | Should -BeExactly '00ADD8'
+    }
+
     It 'uses the built-in default themes without warnings when there is no config file' {
         $env:TERMINALGLYPHS_CONFIG = Join-Path $TestDrive 'missing.jsonc'
         Initialize-ForTest | Should -BeNullOrEmpty

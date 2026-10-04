@@ -37,7 +37,9 @@ function Merge-GlyphConfig {
         if ($null -eq $target -or $null -eq $entry.Section) { continue }
         $resolved = & $Resolve $entry.Value
         if ($null -eq $resolved) { continue }
-        $item = [pscustomobject]@{ Value = $resolved; Name = $entry.Value; Source = $Source }
+        $name = $entry.Value
+        if ($ThemeType -eq 'Color' -and $name -is [string]) { $name = $name.TrimStart('#').ToUpperInvariant() }
+        $item = [pscustomobject]@{ Value = $resolved; Name = $name; Source = $Source }
         if ($entry.Section -ceq 'default') {
             $target['default'] = $item
         } elseif ($null -ne $entry.Key -and $target.ContainsKey($entry.Section)) {
