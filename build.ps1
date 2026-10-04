@@ -42,6 +42,7 @@ function Get-NerdGlyphSet {
 }
 
 function Read-ThemeDirectory {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', 'Glyphs', Justification = 'Used inside the GlyphExists scriptblock; the analyzer does not see it.')]
     param(
         [string]$Path,
         [ValidateSet('Icon', 'Color')][string]$ThemeType,
@@ -76,6 +77,7 @@ function Read-ThemeDirectory {
 }
 
 function Invoke-ModuleBuild {
+    param([string]$ThemesPath, [string]$OutputPath)
     $manifest = Import-PowerShellDataFile -LiteralPath ([System.IO.Path]::Combine($root, 'src', 'TerminalGlyphs.psd1'))
     $nerd = Get-NerdGlyphSet
     $errors = [System.Collections.Generic.List[string]]::new()
@@ -116,7 +118,7 @@ function Invoke-ModuleBuild {
     Write-Host "Built TerminalGlyphs $($manifest.ModuleVersion) -> $moduleDir"
 }
 
-Invoke-ModuleBuild
+Invoke-ModuleBuild -ThemesPath $ThemesPath -OutputPath $OutputPath
 
 if ($Task -eq 'Test') {
     Import-Module Pester -MinimumVersion 5.9.0 -MaximumVersion 5.99.99 -ErrorAction Stop

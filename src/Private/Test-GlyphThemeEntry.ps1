@@ -9,7 +9,7 @@ function Test-GlyphThemeEntry {
         [ValidateSet('Icon', 'Color')]
         [string]$ThemeType,
 
-        [scriptblock]$GlyphExists = { param($name) $true }
+        [scriptblock]$GlyphExists = { $true }
     )
 
     $where = if ($null -eq $Entry.Section) {

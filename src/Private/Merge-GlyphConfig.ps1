@@ -17,7 +17,7 @@ function Merge-GlyphConfig {
         [Parameter(Mandatory)]
         [scriptblock]$Resolve,
 
-        [scriptblock]$GlyphExists = { param($name) $true },
+        [scriptblock]$GlyphExists = { $true },
 
         [string]$Origin = $Source,
 
