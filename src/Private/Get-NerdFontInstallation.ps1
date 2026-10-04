@@ -22,7 +22,17 @@ function Get-NerdFontInstallation {
         [version]$MinimumVersion
     )
 
-    $existing = @($FontDirectory | Where-Object { $_ -and [System.IO.Directory]::Exists($_) })
+    # The same folder can be listed twice (or ~/.fonts can link to ~/.local/share/fonts): read each one once.
+    $folderComparer = if ($IsWindows) { [System.StringComparer]::OrdinalIgnoreCase } else { [System.StringComparer]::Ordinal }
+    $folders = [System.Collections.Generic.HashSet[string]]::new($folderComparer)
+    $existing = [System.Collections.Generic.List[string]]::new()
+    foreach ($folder in $FontDirectory) {
+        if (-not $folder -or -not [System.IO.Directory]::Exists($folder)) { continue }
+        $full = [System.IO.Path]::TrimEndingDirectorySeparator([System.IO.Path]::GetFullPath($folder))
+        $link = [System.IO.Directory]::ResolveLinkTarget($full, $true)
+        if ($link) { $full = [System.IO.Path]::TrimEndingDirectorySeparator($link.FullName) }
+        if ($folders.Add($full)) { $existing.Add($full) }
+    }
     if ($existing.Count -eq 0) { return }
     $ignoreCase = [System.StringComparison]::OrdinalIgnoreCase
     $prefixes = @($PackageMap.Keys | Sort-Object -Property Length -Descending)

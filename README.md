@@ -37,8 +37,8 @@ Import-Module TerminalGlyphs; Install-TerminalGlyphSetup
   backup next to the profile.
 - Prints one result per step. Preview with `-WhatIf`; use `-SkipFont` or `-SkipProfile` to skip a step.
 - Installs other fonts with `-Family`, which takes the release package (`FiraCode`, `CascadiaCode`), the font name
-  (`CaskaydiaCove`, `MesloLGS`) or the name in your terminal settings (`'JetBrainsMono Nerd Font Mono'`). Press Tab
-  after `-Family` to list the packages.
+  (`CaskaydiaCove`, `MesloLGS`) or, for most fonts, the name in your terminal settings
+  (`'JetBrainsMono Nerd Font Mono'`). Press Tab after `-Family` to list the packages.
 
 Then choose the Nerd Font in your terminal settings (the command tells you its name) and open a new terminal.
 On Windows, fonts that were in use are replaced after you **Restart Windows**; until then, apps keep the old version.

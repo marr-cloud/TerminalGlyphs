@@ -184,6 +184,15 @@ Describe 'Install-TerminalGlyphSetup' {
         $completions | Should -Not -Contain 'JetBrainsMono'
     }
 
+    It 'completes -Family after an opening quote' {
+        $line = "Install-TerminalGlyphSetup -Family 'Casc"
+        (TabExpansion2 -inputScript $line -cursorColumn $line.Length).CompletionMatches.CompletionText | Should -Contain 'CascadiaCode'
+    }
+
+    It 'gives the friendly error for a -Family with wildcard characters' {
+        { Install-TerminalGlyphSetup -Family 'Jet[' } | Should -Throw '*Unknown Nerd Fonts package*Jet`[*'
+    }
+
     It 'keeps going and removes its temporary folder when a download fails' {
         $script:Work = $null
         Mock -ModuleName TerminalGlyphs Save-NerdFontRelease { $script:Work = $Destination; throw 'network down' }

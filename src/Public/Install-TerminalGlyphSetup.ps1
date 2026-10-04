@@ -31,12 +31,14 @@ function Install-TerminalGlyphSetup {
     [CmdletBinding(SupportsShouldProcess)]
     param(
         [ArgumentCompleter({
-                # Completers receive (command, parameter, word to complete, ...); only the word is needed.
-                $WordToComplete = $args[2]
-                $module = Get-Module -Name TerminalGlyphs | Select-Object -First 1
+                # Completers receive (command, parameter, word to complete, ...). A quoted word arrives as 'Casc'.
+                $WordToComplete = ([string]$args[2]).Trim([char[]]"'`"")
+                # The module that owns the command in use, even when several versions are loaded.
+                $module = (Get-Command -Name $args[0] -CommandType Function -ErrorAction Ignore | Select-Object -First 1).Module
                 if (-not $module) { return }
                 $packages = & $module { (Read-NerdFontIndex)['packages'].Values } | Sort-Object -Unique
-                foreach ($package in ($packages | Where-Object { $_ -like "$WordToComplete*" })) {
+                $pattern = [System.Management.Automation.WildcardPattern]::Escape($WordToComplete) + '*'
+                foreach ($package in ($packages | Where-Object { $_ -like $pattern })) {
                     [System.Management.Automation.CompletionResult]::new($package, $package, 'ParameterValue', $package)
                 }
             })]
@@ -57,7 +59,7 @@ function Install-TerminalGlyphSetup {
         if (-not $match) {
             $stem = ($name -replace '\s', '')
             $stem = $stem.Substring(0, [Math]::Min(4, $stem.Length))
-            $similar = @(if ($stem) { $knownPackages | Where-Object { $_ -like "*$stem*" } | Select-Object -First 5 })
+            $similar = @(if ($stem) { $knownPackages | Where-Object { $_.Contains($stem, [System.StringComparison]::OrdinalIgnoreCase) } | Select-Object -First 5 })
             $suggestion = if ($similar.Count -gt 0) { " Did you mean $($similar -join ', ')?" } else { ' Use a release package name such as JetBrainsMono, FiraCode, CascadiaCode, Hack or Meslo.' }
             throw "Unknown Nerd Fonts package '$name'.$suggestion Press Tab after -Family to list the packages."
         }

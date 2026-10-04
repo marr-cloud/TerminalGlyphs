@@ -180,6 +180,13 @@ Describe 'Get-NerdFontInstallation' {
         $found[0].Version | Should -Be ([version]'3.0.2')
         $found[0].IsOutdated | Should -BeTrue
     }
+
+    It 'reads a folder listed twice only once' {
+        $folder = Join-Path $TestDrive 'twice'
+        New-TestFont -Path (Join-Path $folder 'JetBrainsMonoNerdFontMono-Regular.ttf') | Out-Null
+        $found = @(Get-NerdFontInstallation -FontDirectory $folder, (Join-Path $folder '.') -PackageMap $map -MinimumVersion '3.5.1')
+        $found[0].Files.Count | Should -Be 1
+    }
 }
 
 Describe 'Save-NerdFontRelease' {
@@ -304,6 +311,23 @@ Describe 'Install-NerdFontFile' {
         $result.Replaced | Should -Be 1
         (Read-FontInfo -Path $installed).FullName | Should -Be 'Test NFM Regular'
         $case.Fonts | Should -Not -Exist
+    }
+
+    It 'replaces every installed copy of a file, such as ~/.fonts and ~/.local/share/fonts on Linux' {
+        $case = New-Case
+        $legacy = New-TestFont -Path (Join-Path $case.Root '.fonts' 'TestNerdFontMono-Regular.ttf') -FullName 'Old A'
+        $current = New-TestFont -Path (Join-Path $case.Root '.local' 'TestNerdFontMono-Regular.ttf') -FullName 'Old B'
+        $result = Install-NerdFontFile -SourceFile $case.Source[0] -TargetDirectory $case.Fonts -Platform Linux -InstalledFile $legacy, $current -UpdateOnly
+        $result.Replaced | Should -Be 2
+        (Read-FontInfo -Path $legacy).FullName | Should -Be 'Test NFM Regular'
+        (Read-FontInfo -Path $current).FullName | Should -Be 'Test NFM Regular'
+    }
+
+    It 'replaces a path listed twice only once' {
+        $case = New-Case
+        $installed = New-TestFont -Path (Join-Path $case.Fonts 'TestNerdFontMono-Regular.ttf') -FullName 'Old'
+        $result = Install-NerdFontFile -SourceFile $case.Source[0] -TargetDirectory $case.Fonts -Platform Linux -InstalledFile $installed, $installed -UpdateOnly
+        $result.Replaced | Should -Be 1
     }
 
     It 'on Windows, renames a file in use and copies the new one' {

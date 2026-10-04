@@ -30,8 +30,17 @@ function Install-NerdFontFile {
 
     # This function runs only after Install-TerminalGlyphSetup approved the package, so the cmdlets below must not
     # ask again when the caller passes -Confirm or -WhatIf.
+    # A file name can be installed in more than one folder (on Linux, ~/.fonts and ~/.local/share/fonts): every copy
+    # is replaced, each path once.
+    $pathComparer = if ($Platform -eq 'Windows') { [System.StringComparer]::OrdinalIgnoreCase } else { [System.StringComparer]::Ordinal }
+    $seen = [System.Collections.Generic.HashSet[string]]::new($pathComparer)
     $installed = @{}
-    foreach ($path in $InstalledFile) { $installed[[System.IO.Path]::GetFileName($path)] = $path }
+    foreach ($path in $InstalledFile) {
+        if (-not $seen.Add([System.IO.Path]::GetFullPath($path))) { continue }
+        $name = [System.IO.Path]::GetFileName($path)
+        if (-not $installed.ContainsKey($name)) { $installed[$name] = [System.Collections.Generic.List[string]]::new() }
+        $installed[$name].Add($path)
+    }
     $result = [pscustomobject]@{
         Added    = [System.Collections.Generic.List[string]]::new()
         Replaced = 0
@@ -42,34 +51,35 @@ function Install-NerdFontFile {
     foreach ($source in $SourceFile) {
         $name = [System.IO.Path]::GetFileName($source)
         if ($installed.ContainsKey($name)) {
-            $target = $installed[$name]
-            try {
-                Copy-Item -LiteralPath $source -Destination $target -Force -Confirm:$false -WhatIf:$false -ErrorAction Stop
-                $result.Replaced++
-                continue
-            } catch {
-                if ($Platform -ne 'Windows') {
+            foreach ($target in $installed[$name]) {
+                try {
+                    Copy-Item -LiteralPath $source -Destination $target -Force -Confirm:$false -WhatIf:$false -ErrorAction Stop
+                    $result.Replaced++
+                    continue
+                } catch {
+                    if ($Platform -ne 'Windows') {
+                        $result.Failed.Add($name)
+                        continue
+                    }
+                }
+                # Windows keeps fonts in use open: it allows renaming them but not overwriting them.
+                $stale = '{0}.{1}.old-nerdfont' -f $target, [DateTime]::UtcNow.ToString('yyyyMMddHHmmss', [cultureinfo]::InvariantCulture)
+                try {
+                    Move-Item -LiteralPath $target -Destination $stale -Confirm:$false -WhatIf:$false -ErrorAction Stop
+                } catch {
                     $result.Failed.Add($name)
                     continue
                 }
-            }
-            # Windows keeps fonts in use open: it allows renaming them but not overwriting them.
-            $stale = '{0}.{1}.old-nerdfont' -f $target, [DateTime]::UtcNow.ToString('yyyyMMddHHmmss', [cultureinfo]::InvariantCulture)
-            try {
-                Move-Item -LiteralPath $target -Destination $stale -Confirm:$false -WhatIf:$false -ErrorAction Stop
-            } catch {
-                $result.Failed.Add($name)
-                continue
-            }
-            try {
-                Copy-Item -LiteralPath $source -Destination $target -Confirm:$false -WhatIf:$false -ErrorAction Stop
-                $result.Renamed++
-            } catch {
-                $result.Failed.Add($name)
                 try {
-                    Move-Item -LiteralPath $stale -Destination $target -Force -Confirm:$false -WhatIf:$false -ErrorAction Stop
+                    Copy-Item -LiteralPath $source -Destination $target -Confirm:$false -WhatIf:$false -ErrorAction Stop
+                    $result.Renamed++
                 } catch {
-                    Write-Warning -Message "TerminalGlyphs: $name could not be restored now; it will be restored the next time you run Install-TerminalGlyphSetup."
+                    $result.Failed.Add($name)
+                    try {
+                        Move-Item -LiteralPath $stale -Destination $target -Force -Confirm:$false -WhatIf:$false -ErrorAction Stop
+                    } catch {
+                        Write-Warning -Message "TerminalGlyphs: $name could not be restored now; it will be restored the next time you run Install-TerminalGlyphSetup."
+                    }
                 }
             }
             continue
