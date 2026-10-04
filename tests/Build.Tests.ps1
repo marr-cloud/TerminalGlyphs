@@ -117,6 +117,26 @@ Describe 'build cleanup' {
         $stale | Should -Not -Exist
         Join-Path $out 'TerminalGlyphs' $moduleVersion 'TerminalGlyphs.psd1' | Should -Exist
     }
+
+    It 'keeps folders that are not module versions' {
+        $out = Join-Path $TestDrive 'mixed-out'
+        $notes = Join-Path $out 'TerminalGlyphs' 'notes'
+        [System.IO.Directory]::CreateDirectory($notes) | Out-Null
+        [System.IO.File]::WriteAllText((Join-Path $notes 'keep.txt'), 'keep')
+        & $buildScript -OutputPath $out *> $null
+        Join-Path $notes 'keep.txt' | Should -Exist
+    }
+
+    It 'refuses an -OutputPath whose TerminalGlyphs folder is a source checkout' {
+        $parent = Join-Path $TestDrive 'workspace'
+        $checkout = Join-Path $parent 'TerminalGlyphs'
+        [System.IO.Directory]::CreateDirectory((Join-Path $checkout 'src')) | Out-Null
+        [System.IO.File]::WriteAllText((Join-Path $checkout 'build.ps1'), '# sources')
+        [System.IO.File]::WriteAllText((Join-Path $checkout 'src' 'keep.ps1'), '# sources')
+        { & $buildScript -OutputPath $parent *> $null } | Should -Throw '*source folder*'
+        Join-Path $checkout 'build.ps1' | Should -Exist
+        Join-Path $checkout 'src' 'keep.ps1' | Should -Exist
+    }
 }
 
 Describe 'build validation' {
