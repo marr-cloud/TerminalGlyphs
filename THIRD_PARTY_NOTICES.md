@@ -21,10 +21,12 @@ TerminalGlyphs includes material from the following projects.
 
 ## Nerd Fonts
 
-- Source: https://github.com/ryanoasis/nerd-fonts (v3.5.1, `glyphnames.json` and `bin/scripts/lib/fonts.json`)
+- Source: https://github.com/ryanoasis/nerd-fonts (v3.5.1, `glyphnames.json`, `bin/scripts/lib/fonts.json` and the
+  release's `SHA-256.txt`)
 - Used for: glyph names and code points in `vendor/nerd-fonts/glyphnames.json`, `TerminalGlyphs.data.json` and
-  `glyphs.json`, and the font family index in `vendor/nerd-fonts/fonts.json` and `nerdfonts.json`. Nerd Fonts applies
-  the MIT License to source files outside folders with an explicit OFL license; see `vendor/nerd-fonts/LICENSE`.
+  `glyphs.json`, the font family index in `vendor/nerd-fonts/fonts.json` and `nerdfonts.json`, and the package
+  checksums in `vendor/nerd-fonts/SHA-256.txt` and `nerdfonts.json`. Nerd Fonts applies the MIT License to source
+  files outside folders with an explicit OFL license; see `vendor/nerd-fonts/LICENSE`.
 - License: MIT
 
     Copyright (c) 2014 Ryan L McIntyre

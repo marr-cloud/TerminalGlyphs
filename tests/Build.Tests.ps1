@@ -101,6 +101,15 @@ Describe 'build output' {
         $fonts['packages']['InconsolataLGC'] | Should -BeExactly 'InconsolataLGC'
     }
 
+    It 'stores the SHA-256 of every release package' {
+        $fonts = Get-Content -LiteralPath (Join-Path $moduleDir 'nerdfonts.json') -Raw | ConvertFrom-Json -AsHashtable
+        $fonts['archives'].Count | Should -Be 72
+        $fonts['archives']['JetBrainsMono'] | Should -BeExactly '04d5e8f903693f9dd13e16f867e994834e681eb3c72c0d337a770dcda09010cf'
+        foreach ($package in ($fonts['packages'].Values | Sort-Object -Unique)) {
+            $fonts['archives'][$package] | Should -Match '^[0-9a-f]{64}$' -Because $package
+        }
+    }
+
     It 'keeps the font index path in the module body without reading it on import' {
         $psm1 = Get-Content -LiteralPath (Join-Path $moduleDir 'TerminalGlyphs.psm1') -Raw
         $psm1 | Should -Match ([regex]::Escape("`$script:FontsPath = [System.IO.Path]::Combine(`$PSScriptRoot, 'nerdfonts.json')"))

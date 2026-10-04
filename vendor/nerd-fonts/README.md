@@ -18,3 +18,13 @@ Used at build time to validate theme glyph names and to generate the glyph maps.
 
 Used at build time to map installed font file names (`patchedName`) to release packages (`folderName`) in
 `nerdfonts.json`, for `Install-TerminalGlyphSetup`.
+
+## SHA-256.txt
+
+- Source: https://github.com/ryanoasis/nerd-fonts/releases/download/v3.5.1/SHA-256.txt
+- Version: 3.5.1
+- SHA256: E03D7AD54547D83F1620719CBC89B5684BC0C6FB028160640AA322B5035A63FB (matches the asset digest GitHub reports for
+  the release; its 72 `.tar.xz` checksums also match the GitHub digests of those assets)
+
+Used at build time to store the checksum of every `.tar.xz` package in `nerdfonts.json`. `Install-TerminalGlyphSetup`
+checks each download against it instead of downloading a checksum file from the same release.

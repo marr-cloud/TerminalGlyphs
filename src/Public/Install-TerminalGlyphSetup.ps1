@@ -34,7 +34,7 @@ function Install-TerminalGlyphSetup {
     )
 
     $ErrorActionPreference = 'Stop'
-    $nerdFonts = [System.IO.File]::ReadAllText($script:FontsPath) | ConvertFrom-Json -AsHashtable
+    $nerdFonts = Read-NerdFontIndex
     $version = [version]$nerdFonts['version']
     $packageMap = $nerdFonts['packages']
     $knownPackages = @($packageMap.Values | Sort-Object -Unique)
@@ -127,7 +127,7 @@ function Install-TerminalGlyphSetup {
                         $work = [System.IO.Path]::Combine([System.IO.Path]::GetTempPath(), "terminalglyphs-$([guid]::NewGuid())")
                         [System.IO.Directory]::CreateDirectory($work) | Out-Null
                     }
-                    $files = @(Save-NerdFontRelease -Package $package -Version $version.ToString() -Destination $work)
+                    $files = @(Save-NerdFontRelease -Package $package -Version $version.ToString() -ExpectedHash $nerdFonts['archives'][$package] -Destination $work)
                     $target = if ($location.Platform -eq 'Linux') { [System.IO.Path]::Combine($location.Directory, 'NerdFonts', $package) } else { $location.Directory }
                     $installedFiles = @()
                     if ($current) { $installedFiles = [string[]]$current.Files }

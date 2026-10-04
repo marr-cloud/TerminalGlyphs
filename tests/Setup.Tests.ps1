@@ -57,6 +57,11 @@ Describe 'Install-TerminalGlyphSetup' {
         $result.Notes | Should -Contain 'Open a new terminal to load TerminalGlyphs.'
     }
 
+    It 'checks each package against the checksum shipped with the module' {
+        Invoke-Setup | Out-Null
+        Should -Invoke -ModuleName TerminalGlyphs Save-NerdFontRelease -Times 1 -Exactly -ParameterFilter { $ExpectedHash -eq '04d5e8f903693f9dd13e16f867e994834e681eb3c72c0d337a770dcda09010cf' }
+    }
+
     It 'updates only the outdated families it finds' {
         Mock -ModuleName TerminalGlyphs Get-NerdFontInstallation { New-Family 'FiraCode' '3.0.2' $true; New-Family 'Hack' '3.5.1' $false }
         $result = Invoke-Setup
@@ -248,6 +253,9 @@ Describe 'Install-TerminalGlyphSetup' {
 Describe 'Install-TerminalGlyphSetup end to end' {
     BeforeAll {
         $script:Release = New-FakeNerdFontRelease -Root (Join-Path $TestDrive 'e2e-release') -Package 'JetBrainsMono' -FontName 'JetBrainsMonoNerdFontMono-Regular.ttf', 'JetBrainsMonoNerdFont-Regular.ttf'
+        # The built index holds the real release checksums; the fake release needs its own.
+        $script:Index = Get-Content -LiteralPath (Join-Path (Split-Path -Parent (Get-BuiltManifestPath)) 'nerdfonts.json') -Raw | ConvertFrom-Json -AsHashtable
+        $script:Index['archives']['JetBrainsMono'] = (Get-FileHash -LiteralPath (Join-Path $script:Release 'JetBrainsMono.tar.xz') -Algorithm SHA256).Hash.ToLowerInvariant()
     }
 
     BeforeEach {
@@ -262,6 +270,7 @@ Describe 'Install-TerminalGlyphSetup end to end' {
         Mock -ModuleName TerminalGlyphs Get-FontLocation { [pscustomobject]@{ Platform = 'Linux'; Directory = $script:Fonts } }
         Mock -ModuleName TerminalGlyphs Invoke-FontCacheRefresh { $true }
         Mock -ModuleName TerminalGlyphs Invoke-NerdFontDownload { Copy-Item -LiteralPath (Join-Path $script:Release ($Uri -split '/')[-1]) -Destination $OutFile }
+        Mock -ModuleName TerminalGlyphs Read-NerdFontIndex { $script:Index }
     }
 
     AfterEach {
