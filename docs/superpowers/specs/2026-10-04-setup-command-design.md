@@ -121,15 +121,21 @@ Install-TerminalGlyphSetup [-Family <string[]>] [-SkipFont] [-SkipProfile] [-Wha
 | Archivo | Responsabilidad |
 |---|---|
 | `src/Public/Install-TerminalGlyphSetup.ps1` | Orquesta los pasos y el resumen |
+| `src/Private/Get-FontLocation.ps1` | Plataforma y carpeta de fuentes del usuario |
 | `src/Private/Get-NerdFontInstallation.ps1` | Detecta familias, archivos y versiones |
-| `src/Private/Read-FontVersion.ps1` | Lee la versión de la tabla `name` |
+| `src/Private/Read-FontInfo.ps1` | Lee nombre completo, familia y versión de la tabla `name` (el registro de Windows necesita el nombre completo) |
+| `src/Private/Invoke-NerdFontDownload.ps1` | Único acceso a la red (sustituible en tests) |
 | `src/Private/Save-NerdFontRelease.ps1` | Descarga, verifica SHA-256 y extrae |
 | `src/Private/Install-NerdFontFile.ps1` | Copia / registra / renombra según plataforma |
+| `src/Private/Register-FontResource.ps1` | `AddFontResource` + `WM_FONTCHANGE` (sustituible en tests) |
+| `src/Private/Invoke-FontCacheRefresh.ps1` | `fc-cache -f` (sustituible en tests) |
 | `src/Private/Remove-StaleFontFile.ps1` | Limpia `.old-nerdfont` tras un reinicio |
 | `src/Private/Update-ProfileImport.ps1` | Edita el perfil |
+| `vendor/nerd-fonts/fonts.json` → `nerdfonts.json` | Índice oficial de las 72 familias v3.5.1 (prefijo de archivo → paquete), compilado por `build.ps1` en lugar de una tabla escrita a mano |
 
 Rutas, clave de registro, URL base y hora de arranque son parámetros con valores por defecto reales (inyectables en
-tests). Se elimina `tools/Install-NerdFont.ps1`.
+tests). Los estados del resumen se muestran en inglés como el resto del módulo (`OK`, `Unchanged`, `Skipped`,
+`Error`). Se elimina `tools/Install-NerdFont.ps1`. Plan: `docs/superpowers/plans/2026-10-04-setup-command.md`.
 
 ## 7. Tests y CI
 
