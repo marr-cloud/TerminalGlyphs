@@ -78,11 +78,19 @@ Describe 'workflows' {
         }
     }
 
-    It 'CI runs on Windows and Linux' {
+    It 'CI runs on Windows, Linux and macOS and rehearses publishing' {
         $ci = Get-RepoText '.github/workflows/ci.yml'
         $ci | Should -Match 'windows-latest'
         $ci | Should -Match 'ubuntu-latest'
+        $ci | Should -Match 'macos-latest'
         $ci | Should -Match ([regex]::Escape('./build.ps1 -Task Test'))
+        $ci | Should -Match ([regex]::Escape('./tools/Test-Publish.ps1'))
+    }
+
+    It 'rehearses publishing before publishing' {
+        $publish = Get-RepoText '.github/workflows/publish.yml'
+        $publish.IndexOf('./tools/Test-Publish.ps1') | Should -BeGreaterThan 0
+        $publish.IndexOf('./tools/Test-Publish.ps1') | Should -BeLessThan $publish.IndexOf('Publish-PSResource -Path')
     }
 
     It 'publishing only runs manually' {
