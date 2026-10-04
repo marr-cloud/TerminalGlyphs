@@ -84,6 +84,23 @@ Describe 'Install-TerminalGlyphSetup' {
         Should -Invoke -ModuleName TerminalGlyphs Save-NerdFontRelease -Times 0
     }
 
+    It 'asks to remove Nerd Fonts 2.x files instead of installing the default font' {
+        Mock -ModuleName TerminalGlyphs Get-NerdFontInstallation {
+            [pscustomobject]@{ Name = 'Nerd Fonts 2.x'; Package = $null; Files = [System.Collections.Generic.List[string]]@('a.ttf', 'b.ttf'); Version = [version]'2.3.3'; IsOutdated = $true; IsLegacy = $true }
+        }
+        $result = Invoke-Setup @{ WarningAction = 'SilentlyContinue' }
+        $advice = '2 file(s) from Nerd Fonts 2.x; remove them in your system font settings, then run Install-TerminalGlyphSetup again'
+        $step = @(Get-Step $result 'Font Nerd Fonts 2.x')
+        $step.Count | Should -Be 1
+        $step[0].Status | Should -Be 'Skipped'
+        $step[0].Detail | Should -BeExactly $advice
+        $warnings = @(Install-TerminalGlyphSetup -SkipProfile 3>&1 6>$null | Where-Object { $_ -is [System.Management.Automation.WarningRecord] })
+        $warnings.Count | Should -Be 1
+        "$($warnings[0])" | Should -BeLike "*$advice*"
+        Get-Step $result 'Font JetBrainsMono' | Should -BeNullOrEmpty
+        Should -Invoke -ModuleName TerminalGlyphs Save-NerdFontRelease -Times 0
+    }
+
     It 'rejects an unknown -Family before changing anything' {
         { Install-TerminalGlyphSetup -Family 'NoSuchFont' } | Should -Throw '*Unknown Nerd Fonts package*NoSuchFont*'
         Should -Invoke -ModuleName TerminalGlyphs Get-FontLocation -Times 0

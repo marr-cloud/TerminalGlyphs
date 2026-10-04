@@ -92,6 +92,8 @@ Describe 'Get-NerdFontInstallation' {
         New-TestFont -Path (Join-Path $dir 'FooBarNerdFont-Regular.ttf') | Out-Null
         New-TestFont -Path (Join-Path $dir 'Arial.ttf') | Out-Null
         [System.IO.File]::WriteAllText((Join-Path $dir 'FiraCodeNerdFont-Bold.ttf.20260101000000.old-nerdfont'), 'old')
+        New-TestFont -Path (Join-Path $dir 'JetBrains Mono Regular Nerd Font Complete Mono.ttf') -Version 'Version 2.304;Nerd Fonts 2.3.3' | Out-Null
+        New-TestFont -Path (Join-Path $dir 'v2' 'Hack Bold Nerd Font Complete.otf') -Version 'Version 3.003;Nerd Fonts 2.1.0' | Out-Null
         $families = @(Get-NerdFontInstallation -FontDirectory $dir -PackageMap $map -MinimumVersion '3.5.1')
         function Get-Family([string]$Name) { $families | Where-Object Name -EQ $Name }
     }
@@ -128,7 +130,18 @@ Describe 'Get-NerdFontInstallation' {
     It 'ignores fonts that are not Nerd Fonts and renamed leftovers' {
         $families.Files | Should -Not -Contain (Join-Path $dir 'Arial.ttf')
         @($families.Files | Where-Object { $_ -like '*.old-nerdfont' }).Count | Should -Be 0
-        $families.Count | Should -Be 6
+        $families.Count | Should -Be 7
+    }
+
+    It 'reports Nerd Fonts 2.x files once as a legacy group' {
+        $legacy = @($families | Where-Object IsLegacy)
+        $legacy.Count | Should -Be 1
+        $legacy[0].Name | Should -Be 'Nerd Fonts 2.x'
+        $legacy[0].Package | Should -BeNullOrEmpty
+        $legacy[0].Files | Should -Be @((Join-Path $dir 'JetBrains Mono Regular Nerd Font Complete Mono.ttf'), (Join-Path $dir 'v2' 'Hack Bold Nerd Font Complete.otf'))
+        $legacy[0].Version | Should -Be ([version]'2.1.0')
+        $legacy[0].IsOutdated | Should -BeTrue
+        @($families | Where-Object { $_.IsLegacy -eq $false }).Count | Should -Be 6
     }
 
     It 'returns nothing for a missing folder' {

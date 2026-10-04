@@ -7,6 +7,7 @@ function Install-TerminalGlyphSetup {
         (3.5.1), installs the packages in -Family (or JetBrainsMono if you have no Nerd Font), and replaces
         "Import-Module Terminal-Icons" in your profile, keeping a backup. Fonts are installed for the current user
         only, without admin rights. Your terminal settings are not changed: choose the font there afterwards.
+        Nerd Fonts 2.x files are not changed: remove them first, then run the command again.
 
         Each step runs even if another one fails, and the command returns one result per step. On Windows, fonts
         that were in use are replaced after you restart Windows.
@@ -73,7 +74,12 @@ function Install-TerminalGlyphSetup {
             }
 
             $installed = @(Get-NerdFontInstallation -FontDirectory $location.Directory -PackageMap $packageMap -MinimumVersion $version)
-            foreach ($unknown in ($installed | Where-Object { -not $_.Package })) {
+            foreach ($legacy in ($installed | Where-Object { $_.IsLegacy })) {
+                $advice = '{0} file(s) from Nerd Fonts 2.x; remove them in your system font settings, then run Install-TerminalGlyphSetup again' -f $legacy.Files.Count
+                Write-Warning -Message "TerminalGlyphs: $advice."
+                & $newStep "Font $($legacy.Name)" 'Skipped' $advice
+            }
+            foreach ($unknown in ($installed | Where-Object { -not $_.Package -and -not $_.IsLegacy })) {
                 Write-Warning -Message "TerminalGlyphs: $($unknown.Name) is not a Nerd Fonts $version family; it was not changed."
                 & $newStep "Font $($unknown.Name)" 'Skipped' 'Unknown Nerd Fonts family'
             }
