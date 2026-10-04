@@ -108,4 +108,31 @@ Describe 'theme consistency' {
         $folderKeys = @($colors['directories']['names'].Keys)
         foreach ($folder in '.codex', '.cursor', '.gemini', '.kiro') { $folderKeys | Should -Contain $folder }
     }
+
+    It 'gives every color in <Theme> at least 3:1 contrast on <Background>' -ForEach @(
+        @{ Theme = 'default'; Background = '1E1E1E'; Fix = 'ConvertTo-DarkColor' }
+        @{ Theme = 'light'; Background = 'FFFFFF'; Fix = 'ConvertTo-LightColor' }
+    ) {
+        Import-Module (Join-Path $root 'tools' 'DeviconsMapping.psm1') -Force
+        try {
+            $colors = Read-JsoncFile -Path (Join-Path $root 'themes' 'colors' "$Theme.jsonc")
+            $checked = 0
+            $low = foreach ($kind in 'files', 'directories') {
+                foreach ($section in @($colors[$kind].Keys)) {
+                    $value = $colors[$kind][$section]
+                    $entries = if ($value -is [System.Collections.IDictionary]) { @($value.GetEnumerator()) } else { @([pscustomobject]@{ Key = $null; Value = $value }) }
+                    foreach ($entry in $entries) {
+                        $checked++
+                        if ((Get-ContrastRatio -Hex $entry.Value -Background $Background) -lt 3) {
+                            '{0}.{1}[{2}] {3}, use {4}' -f $kind, $section, $entry.Key, $entry.Value, (& $Fix -Hex $entry.Value)
+                        }
+                    }
+                }
+            }
+            $checked | Should -BeGreaterThan 900
+            $low | Should -BeNullOrEmpty
+        } finally {
+            Remove-Module DeviconsMapping -ErrorAction SilentlyContinue
+        }
+    }
 }
