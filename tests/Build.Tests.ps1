@@ -39,6 +39,28 @@ Describe 'build output' {
         $data['glyphs'].Contains('nf-md-arrow_right_thick') | Should -BeTrue
     }
 
+    It 'compiles every theme entry exactly as in themes/' {
+        foreach ($helper in 'Read-JsoncFile', 'Get-GlyphThemeEntry') { . (Join-Path $script:RepoRoot 'src' 'Private' "$helper.ps1") }
+        $checked = 0
+        foreach ($type in @(@{ Dir = 'icons'; Key = 'iconThemes'; Color = $false }, @{ Dir = 'colors'; Key = 'colorThemes'; Color = $true })) {
+            foreach ($file in (Get-ChildItem -LiteralPath (Join-Path $script:RepoRoot 'themes' $type.Dir) -Filter '*.jsonc')) {
+                $compiled = $data[$type.Key][$file.BaseName]
+                $compiled | Should -Not -BeNullOrEmpty -Because $file.Name
+                $source = @(Get-GlyphThemeEntry -Theme (Read-JsoncFile -Path $file.FullName))
+                foreach ($entry in $source) {
+                    $node = $compiled[$entry.Kind]
+                    if ($null -ne $entry.Section) { $node = $node[$entry.Section] }
+                    if ($null -ne $entry.Key) { $node = $node[$entry.Key] }
+                    $expected = if ($type.Color) { $entry.Value.TrimStart('#').ToUpperInvariant() } else { $entry.Value }
+                    $node | Should -BeExactly $expected -Because "$($file.Name) $($entry.Kind)/$($entry.Section)/$($entry.Key)"
+                    $checked++
+                }
+                @(Get-GlyphThemeEntry -Theme $compiled).Count | Should -Be $source.Count -Because "$($file.Name) has no extra compiled entries"
+            }
+        }
+        $checked | Should -BeGreaterThan 100
+    }
+
     It 'stores glyphs above U+FFFF as surrogate pairs' {
         [char]::ConvertToUtf32($data['glyphs']['nf-md-arrow_right_thick'], 0) | Should -Be 0xF0055
     }
