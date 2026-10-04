@@ -6,6 +6,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Readable colors: 281 colors of the light theme now have at least 3:1 contrast on white (for example `.js`, `.ts`,
+  `.sql` and `CHANGELOG` were bright yellow or green) and 10 colors of the default theme have at least 3:1 on a dark
+  background (`#1E1E1E`), keeping their hue. A test keeps every color of both themes readable.
+- The performance test reports the median of three first listings.
+
 ## [0.3.1] - 2026-10-04
 
 ### Changed

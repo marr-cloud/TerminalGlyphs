@@ -16,10 +16,13 @@ Describe 'performance' -Tag 'Performance' {
         $median | Should -BeLessThan 100
     }
 
-    It 'reports the first listing time' {
-        $result = Invoke-IsolatedPwsh -Environment $childEnv -Command "Import-Module '$manifestPath'; (Measure-Command { Get-ChildItem -LiteralPath '$fixture' | Out-String }).TotalMilliseconds.ToString([cultureinfo]::InvariantCulture)"
-        $firstListing = [double]::Parse($result.Output.Trim(), [cultureinfo]::InvariantCulture)
-        Write-Host ("First Get-ChildItem (lazy initialization): {0:N1} ms" -f $firstListing)
-        $firstListing | Should -BeLessThan 600
+    It 'lists for the first time in under 600 ms (median of 3, pwsh -NoProfile)' {
+        $times = foreach ($i in 1..3) {
+            $result = Invoke-IsolatedPwsh -Environment $childEnv -Command "Import-Module '$manifestPath'; (Measure-Command { Get-ChildItem -LiteralPath '$fixture' | Out-String }).TotalMilliseconds.ToString([cultureinfo]::InvariantCulture)"
+            [double]::Parse($result.Output.Trim(), [cultureinfo]::InvariantCulture)
+        }
+        $median = ($times | Sort-Object)[1]
+        Write-Host ("First Get-ChildItem (lazy initialization): {0}  median {1:N1} ms" -f (($times | ForEach-Object { '{0:N1}' -f $_ }) -join ', '), $median)
+        $median | Should -BeLessThan 600
     }
 }

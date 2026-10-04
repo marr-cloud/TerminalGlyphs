@@ -3,7 +3,8 @@
 Nerd Font icons and colors for files and folders in `Get-ChildItem`, for PowerShell 7.4+.
 
 TerminalGlyphs is a reimplementation of [Terminal-Icons](https://github.com/devblackops/Terminal-Icons), which has not
-been maintained since 2023. It keeps the Terminal-Icons mappings and colors and adds:
+been maintained since 2023. It keeps the Terminal-Icons mappings and colors (with the colors that were hard to read on
+white or dark backgrounds darkened or lightened to 3:1 contrast, keeping their hue) and adds:
 
 - **Reliable imports.** Terminal-Icons rewrites its theme files on every import. When several sessions start at once
   (split panes, restored tabs), they corrupt those files, and hosts that load the profile inside `try { }` (such as
