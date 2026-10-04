@@ -44,13 +44,14 @@ function Merge-GlyphConfig {
         if ($kind -ceq 'name' -or $kind -ceq '$schema') { continue }
         $target = $Table[$kind]
         $kindValue = $Theme[$kind]
-        $sections = if ($kindValue -is [System.Collections.IDictionary]) { @($kindValue.Keys) } else { @($null) }
+        # Assigned inside each branch: an if statement's output is unrolled, so @($null) would become $null.
+        if ($kindValue -is [System.Collections.IDictionary]) { $sections = @($kindValue.Keys) } else { $sections = @($null) }
         foreach ($section in $sections) {
             $sectionValue = if ($null -eq $section) { $kindValue } else { $kindValue[$section] }
-            $pairs = if ($sectionValue -is [System.Collections.IDictionary]) {
-                @($sectionValue.GetEnumerator())
+            if ($sectionValue -is [System.Collections.IDictionary]) {
+                $pairs = @($sectionValue.GetEnumerator())
             } else {
-                @([pscustomobject]@{ Key = $null; Value = $sectionValue })
+                $pairs = @([pscustomobject]@{ Key = $null; Value = $sectionValue })
             }
             foreach ($pair in $pairs) {
                 if ($Validate) {

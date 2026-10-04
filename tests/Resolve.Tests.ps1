@@ -64,6 +64,28 @@ Describe 'Merge-GlyphConfig' {
         }
     }
 
+    It 'with -Validate, warns like an entry by entry check for <Case>' -ForEach @(
+        @{ Case = 'kinds that are not objects'; Layer = [ordered]@{ files = 'nf-x'; foo = 'bar'; directories = $null } }
+        @{ Case = 'a list as a kind'; Layer = [ordered]@{ files = @('nf-x') } }
+        @{ Case = 'an unknown section and a default object'; Layer = [ordered]@{ files = [ordered]@{ nombres = [ordered]@{ a = 'nf-dev-go' }; default = [ordered]@{ a = 'nf-dev-go' } } } }
+        @{ Case = 'a section that is not an object'; Layer = [ordered]@{ files = [ordered]@{ names = 'nf-dev-go' } } }
+        @{ Case = 'invalid entries'; Layer = [ordered]@{ files = [ordered]@{ names = [ordered]@{ ok = 'nf-dev-go'; bad = 'nf-nope'; none = $null }; extensions = [ordered]@{ rs = 'nf-dev-go' }; links = [ordered]@{ weird = 'nf-dev-go' } } } }
+    ) {
+        InModuleScope TerminalGlyphs -Parameters @{ Layer = $Layer } {
+            param($Layer)
+            $glyphExists = { param($n) $n -eq 'nf-dev-go' }
+            $expected = @(foreach ($entry in (Get-GlyphThemeEntry -Theme $Layer)) {
+                    $problem = Test-GlyphThemeEntry -Entry $entry -ThemeType Icon -GlyphExists $glyphExists
+                    if ($problem) { "TerminalGlyphs: cfg.jsonc: ignoring $problem" }
+                })
+            $expected.Count | Should -BeGreaterThan 0
+            $script:Warned.Clear()
+            $table = New-GlyphTable
+            $warnings = @(Merge-GlyphConfig -Table $table -Theme $Layer -ThemeType Icon -Source 'user-config' -Origin 'cfg.jsonc' -Validate -GlyphExists $glyphExists -Resolve { param($v) $v } 3>&1)
+            @($warnings | ForEach-Object { "$_" }) | Should -Be $expected
+        }
+    }
+
     It 'resolves each distinct value once' {
         InModuleScope TerminalGlyphs {
             $table = New-GlyphTable
