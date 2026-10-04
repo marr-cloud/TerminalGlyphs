@@ -235,6 +235,23 @@ Describe 'Save-NerdFontRelease' {
 }
 
 Describe 'Invoke-FontCacheRefresh' {
+    BeforeAll {
+        # fontconfig writes its cache under XDG_CACHE_HOME: keep it in TestDrive, not in the real ~/.cache/fontconfig.
+        $savedCacheHome = $env:XDG_CACHE_HOME
+        $env:XDG_CACHE_HOME = Join-Path $TestDrive 'cache'
+    }
+
+    AfterAll {
+        $env:XDG_CACHE_HOME = $savedCacheHome
+    }
+
+    It 'writes the fontconfig cache under TestDrive' -Skip:(-not $IsLinux -or -not (Get-Command -Name 'fc-cache' -CommandType Application -ErrorAction Ignore)) {
+        $fonts = Join-Path $TestDrive 'fc-fonts'
+        New-TestFont -Path (Join-Path $fonts 'TestNerdFont-Regular.ttf') | Out-Null
+        Invoke-FontCacheRefresh -Directory $fonts | Out-Null
+        Join-Path $env:XDG_CACHE_HOME 'fontconfig' | Should -Exist
+    }
+
     It 'returns whether fc-cache ran' {
         $expected = [bool](Get-Command -Name 'fc-cache' -CommandType Application -ErrorAction Ignore)
         Invoke-FontCacheRefresh -Directory $TestDrive | Should -Be $expected
@@ -365,6 +382,15 @@ Describe 'Install-NerdFontFile' {
         $result = Install-NerdFontFile -SourceFile $case.Source[0] -TargetDirectory $case.Fonts -Platform $Platform -InstalledFile $installed -UpdateOnly
         $result.Failed.Count | Should -Be 1
         @(Get-ChildItem -LiteralPath $case.Fonts -Filter '*.old-nerdfont').Count | Should -Be 0
+    }
+
+    It 'counts a file that fails in several folders once' {
+        $case = New-Case
+        $first = New-TestFont -Path (Join-Path $case.Root '.fonts' 'TestNerdFontMono-Regular.ttf') -FullName 'Old A'
+        $second = New-TestFont -Path (Join-Path $case.Root '.local' 'TestNerdFontMono-Regular.ttf') -FullName 'Old B'
+        Mock Copy-Item { throw [System.IO.IOException]::new('Permission denied.') }
+        $result = Install-NerdFontFile -SourceFile $case.Source[0] -TargetDirectory $case.Fonts -Platform Linux -InstalledFile $first, $second -UpdateOnly
+        $result.Failed | Should -Be @('TestNerdFontMono-Regular.ttf')
     }
 }
 
