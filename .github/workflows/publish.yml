@@ -1,0 +1,31 @@
+name: Publish to PowerShell Gallery
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "publish" to publish the version in src/TerminalGlyphs.psd1'
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    if: github.event.inputs.confirm == 'publish'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build and test
+        shell: pwsh
+        run: |
+          Install-PSResource -Name Pester -Version '[5.9.0, 6.0.0)' -Scope CurrentUser -TrustRepository
+          Install-PSResource -Name PSScriptAnalyzer -Version '1.25.0' -Scope CurrentUser -TrustRepository
+          ./build.ps1 -Task Test
+      - name: Publish
+        shell: pwsh
+        env:
+          PSGALLERY_API_KEY: ${{ secrets.PSGALLERY_API_KEY }}
+        run: |
+          $version = (Import-PowerShellDataFile ./src/TerminalGlyphs.psd1).ModuleVersion
+          Publish-PSResource -Path "./out/TerminalGlyphs/$version" -Repository PSGallery -ApiKey $env:PSGALLERY_API_KEY

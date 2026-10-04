@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/marr-cloud/TerminalGlyphs/main/schema/config.schema.json",
+  "title": "TerminalGlyphs configuration",
+  "description": "Optional user config for TerminalGlyphs. Entries in icons and colors are merged on top of the selected themes.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "iconTheme": { "description": "Built-in icon theme.", "enum": ["default"] },
+    "colorTheme": { "description": "Built-in color theme.", "enum": ["default", "light", "dracula"] },
+    "icons": { "$ref": "#/$defs/iconLayer" },
+    "colors": { "$ref": "#/$defs/colorLayer" }
+  },
+  "$defs": {
+    "glyph": {
+      "type": "string",
+      "pattern": "^nf-[a-z0-9_-]+$",
+      "description": "Nerd Fonts 3.5.1 glyph name, for example nf-dev-go. Search with Find-NerdGlyph."
+    },
+    "color": {
+      "type": "string",
+      "pattern": "^#?[0-9A-Fa-f]{6}$",
+      "description": "Hex color RRGGBB, with or without #."
+    },
+    "glyphMap": { "type": "object", "additionalProperties": { "$ref": "#/$defs/glyph" } },
+    "colorMap": { "type": "object", "additionalProperties": { "$ref": "#/$defs/color" } },
+    "extensionNames": { "propertyNames": { "pattern": "^\\." } },
+    "iconLinks": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": { "symlink": { "$ref": "#/$defs/glyph" }, "junction": { "$ref": "#/$defs/glyph" } }
+    },
+    "colorLinks": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": { "symlink": { "$ref": "#/$defs/color" }, "junction": { "$ref": "#/$defs/color" } }
+    },
+    "iconLayer": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "files": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "names": { "$ref": "#/$defs/glyphMap" },
+            "extensions": { "allOf": [{ "$ref": "#/$defs/glyphMap" }, { "$ref": "#/$defs/extensionNames" }] },
+            "links": { "$ref": "#/$defs/iconLinks" },
+            "default": { "$ref": "#/$defs/glyph" }
+          }
+        },
+        "directories": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "names": { "$ref": "#/$defs/glyphMap" },
+            "links": { "$ref": "#/$defs/iconLinks" },
+            "default": { "$ref": "#/$defs/glyph" }
+          }
+        }
+      }
+    },
+    "colorLayer": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "files": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "names": { "$ref": "#/$defs/colorMap" },
+            "extensions": { "allOf": [{ "$ref": "#/$defs/colorMap" }, { "$ref": "#/$defs/extensionNames" }] },
+            "links": { "$ref": "#/$defs/colorLinks" },
+            "default": { "$ref": "#/$defs/color" }
+          }
+        },
+        "directories": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "names": { "$ref": "#/$defs/colorMap" },
+            "links": { "$ref": "#/$defs/colorLinks" },
+            "default": { "$ref": "#/$defs/color" }
+          }
+        }
+      }
+    }
+  }
+}
