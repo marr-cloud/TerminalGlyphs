@@ -120,3 +120,36 @@ Describe 'Select-GlyphName' {
         Select-GlyphName -CodePoint 0xE6FF -GlyphIndex $index | Should -BeNullOrEmpty
     }
 }
+
+Describe 'ConvertTo-LightColor' {
+    It 'keeps <Hex>, which already has 3:1 contrast on white' -ForEach @(@{ Hex = '1354BF' }, @{ Hex = '123456' }) {
+        ConvertTo-LightColor -Hex $Hex | Should -BeExactly $Hex
+    }
+
+    It 'darkens <Hex> to at least 3:1 on white, keeping its hue' -ForEach @(@{ Hex = 'FBF0DF' }, @{ Hex = 'F7DF1E' }, @{ Hex = '00ADD8' }, @{ Hex = 'FFFFFF' }) {
+        $light = ConvertTo-LightColor -Hex $Hex
+        Get-ContrastWithWhite -Hex $light | Should -BeGreaterOrEqual 3
+        $light | Should -Match '^[0-9A-F]{6}$'
+        if ((ConvertTo-Hsl -Hex $Hex)[1] -gt 0) {
+            [Math]::Abs((ConvertTo-Hsl -Hex $light)[0] - (ConvertTo-Hsl -Hex $Hex)[0]) | Should -BeLessOrEqual 3
+        }
+    }
+
+    It 'accepts a leading # and lower case' {
+        ConvertTo-LightColor -Hex '#1354bf' | Should -BeExactly '1354BF'
+    }
+}
+
+Describe 'ConvertTo-DraculaColor' {
+    It 'maps <Hex> to <Expected>' -ForEach @(
+        @{ Hex = 'E44D26'; Expected = 'FF5555' }
+        @{ Hex = '3178C6'; Expected = '8BE9FD' }
+        @{ Hex = '41B883'; Expected = '50FA7B' }
+        @{ Hex = '#bd93f9'; Expected = 'BD93F9' }
+        @{ Hex = '6D8086'; Expected = '6272A4' }
+        @{ Hex = 'FFFFFF'; Expected = 'F8F8F2' }
+        @{ Hex = '000000'; Expected = '6272A4' }
+    ) {
+        ConvertTo-DraculaColor -Hex $Hex | Should -BeExactly $Expected
+    }
+}
