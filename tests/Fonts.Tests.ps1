@@ -423,3 +423,29 @@ Describe 'Remove-StaleFontFile approved changes' {
         Should -Invoke Move-Item -Times 1 -Exactly -ParameterFilter { $PesterBoundParameters['Confirm'] -eq $false -and $PesterBoundParameters['WhatIf'] -eq $false }
     }
 }
+Describe 'Resolve-NerdFontPackage' {
+    BeforeAll {
+        $map = @{ JetBrainsMono = 'JetBrainsMono'; CaskaydiaCove = 'CascadiaCode'; CaskaydiaMono = 'CascadiaMono'; MesloLG = 'Meslo'; FiraCode = 'FiraCode'; Hack = 'Hack' }
+    }
+
+    It 'resolves <Name> to <Expected>' -ForEach @(
+        @{ Name = 'CascadiaCode'; Expected = 'CascadiaCode' }
+        @{ Name = 'cascadiacode'; Expected = 'CascadiaCode' }
+        @{ Name = 'CaskaydiaCove'; Expected = 'CascadiaCode' }
+        @{ Name = 'CaskaydiaMono'; Expected = 'CascadiaMono' }
+        @{ Name = 'JetBrainsMono Nerd Font Mono'; Expected = 'JetBrainsMono' }
+        @{ Name = 'JetBrainsMono NFM'; Expected = 'JetBrainsMono' }
+        @{ Name = 'JetBrainsMonoNL'; Expected = 'JetBrainsMono' }
+        @{ Name = 'JetBrainsMonoNL Nerd Font'; Expected = 'JetBrainsMono' }
+        @{ Name = 'Meslo'; Expected = 'Meslo' }
+        @{ Name = 'MesloLGS'; Expected = 'Meslo' }
+        @{ Name = 'MesloLGM NF'; Expected = 'Meslo' }
+        @{ Name = 'MesloLGLDZ Nerd Font Mono'; Expected = 'Meslo' }
+    ) {
+        Resolve-NerdFontPackage -Name $Name -PackageMap $map | Should -BeExactly $Expected
+    }
+
+    It 'returns nothing for <Name>' -ForEach @(@{ Name = 'Nope' }, @{ Name = 'HackXYZ' }, @{ Name = 'Nerd Font' }, @{ Name = '' }) {
+        Resolve-NerdFontPackage -Name $Name -PackageMap $map | Should -BeNullOrEmpty
+    }
+}

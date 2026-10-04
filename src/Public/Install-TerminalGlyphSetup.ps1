@@ -13,7 +13,9 @@ function Install-TerminalGlyphSetup {
         Each step runs even if another one fails, and the command returns one result per step. On Windows, fonts
         that were in use are replaced after you restart Windows.
     .PARAMETER Family
-        Nerd Fonts release packages to install or update, such as JetBrainsMono, FiraCode, CascadiaCode or Meslo.
+        Nerd Fonts to install or update. Use the release package (JetBrainsMono, FiraCode, CascadiaCode, Meslo), the
+        font name (CaskaydiaCove, MesloLGS) or the name shown in your terminal settings (JetBrainsMono Nerd Font Mono).
+        Press Tab to list the packages.
     .PARAMETER SkipFont
         Does not install, update or clean up fonts.
     .PARAMETER SkipProfile
@@ -22,10 +24,22 @@ function Install-TerminalGlyphSetup {
         Install-TerminalGlyphSetup
     .EXAMPLE
         Install-TerminalGlyphSetup -Family FiraCode -WhatIf
+    .EXAMPLE
+        Install-TerminalGlyphSetup -Family 'CaskaydiaCove Nerd Font Mono'
     #>
     [OutputType([pscustomobject])]
     [CmdletBinding(SupportsShouldProcess)]
     param(
+        [ArgumentCompleter({
+                # Completers receive (command, parameter, word to complete, ...); only the word is needed.
+                $WordToComplete = $args[2]
+                $module = Get-Module -Name TerminalGlyphs | Select-Object -First 1
+                if (-not $module) { return }
+                $packages = & $module { (Read-NerdFontIndex)['packages'].Values } | Sort-Object -Unique
+                foreach ($package in ($packages | Where-Object { $_ -like "$WordToComplete*" })) {
+                    [System.Management.Automation.CompletionResult]::new($package, $package, 'ParameterValue', $package)
+                }
+            })]
         [string[]]$Family,
 
         [switch]$SkipFont,
@@ -39,8 +53,14 @@ function Install-TerminalGlyphSetup {
     $packageMap = $nerdFonts['packages']
     $knownPackages = @($packageMap.Values | Sort-Object -Unique)
     $requested = foreach ($name in $Family) {
-        $match = $knownPackages | Where-Object { $_ -eq $name } | Select-Object -First 1
-        if (-not $match) { throw "Unknown Nerd Fonts package '$name'. Use a release package name such as JetBrainsMono, FiraCode, CascadiaCode, Hack or Meslo." }
+        $match = Resolve-NerdFontPackage -Name $name -PackageMap $packageMap
+        if (-not $match) {
+            $stem = ($name -replace '\s', '')
+            $stem = $stem.Substring(0, [Math]::Min(4, $stem.Length))
+            $similar = @(if ($stem) { $knownPackages | Where-Object { $_ -like "*$stem*" } | Select-Object -First 5 })
+            $suggestion = if ($similar.Count -gt 0) { " Did you mean $($similar -join ', ')?" } else { ' Use a release package name such as JetBrainsMono, FiraCode, CascadiaCode, Hack or Meslo.' }
+            throw "Unknown Nerd Fonts package '$name'.$suggestion Press Tab after -Family to list the packages."
+        }
         $match
     }
 

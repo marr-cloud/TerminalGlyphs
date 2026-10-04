@@ -155,6 +155,26 @@ Describe 'Install-TerminalGlyphSetup' {
         Should -Invoke -ModuleName TerminalGlyphs Update-ProfileImport -Times 0
     }
 
+    It 'suggests similar packages for an unknown -Family' {
+        { Install-TerminalGlyphSetup -Family 'JetBrains' } | Should -Throw '*Did you mean*JetBrainsMono*'
+    }
+
+    It 'accepts the font name in -Family (<Name>)' -ForEach @(
+        @{ Name = 'CaskaydiaCove'; Expected = 'CascadiaCode' }
+        @{ Name = 'MesloLGS Nerd Font Mono'; Expected = 'Meslo' }
+    ) {
+        Invoke-Setup @{ Family = $Name } | Out-Null
+        Should -Invoke -ModuleName TerminalGlyphs Save-NerdFontRelease -Times 1 -Exactly -ParameterFilter { $Package -ceq $Expected }
+    }
+
+    It 'completes -Family with the release packages' {
+        $line = 'Install-TerminalGlyphSetup -Family Casc'
+        $completions = (TabExpansion2 -inputScript $line -cursorColumn $line.Length).CompletionMatches.CompletionText
+        $completions | Should -Contain 'CascadiaCode'
+        $completions | Should -Contain 'CascadiaMono'
+        $completions | Should -Not -Contain 'JetBrainsMono'
+    }
+
     It 'keeps going and removes its temporary folder when a download fails' {
         $script:Work = $null
         Mock -ModuleName TerminalGlyphs Save-NerdFontRelease { $script:Work = $Destination; throw 'network down' }

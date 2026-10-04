@@ -31,12 +31,14 @@ Import-Module TerminalGlyphs; Install-TerminalGlyphSetup
 
 - Updates the Nerd Fonts 3.x families in your user font folder that are older than 3.5.1, and installs JetBrainsMono
   if you have no Nerd Font (or the packages you pass with `-Family`). If you still have Nerd Fonts 2.x files, it
-  asks you to remove them first. Packages are downloaded from the Nerd Fonts GitHub release and checked against its
-  SHA-256 list. No admin rights needed. Works on Windows, Linux and macOS.
+  asks you to remove them first. Packages are downloaded from the Nerd Fonts GitHub release and checked against the
+  SHA-256 checksums shipped with the module. No admin rights needed. Works on Windows, Linux and macOS.
 - Replaces `Import-Module Terminal-Icons` in your profile with `Import-Module TerminalGlyphs` (or adds it), keeping a
   backup next to the profile.
-- Prints one result per step. Preview with `-WhatIf`; use `-Family FiraCode` for other fonts, `-SkipFont` or
-  `-SkipProfile` to skip a step.
+- Prints one result per step. Preview with `-WhatIf`; use `-SkipFont` or `-SkipProfile` to skip a step.
+- Installs other fonts with `-Family`, which takes the release package (`FiraCode`, `CascadiaCode`), the font name
+  (`CaskaydiaCove`, `MesloLGS`) or the name in your terminal settings (`'JetBrainsMono Nerd Font Mono'`). Press Tab
+  after `-Family` to list the packages.
 
 Then choose the Nerd Font in your terminal settings (the command tells you its name) and open a new terminal.
 On Windows, fonts that were in use are replaced after you **Restart Windows**; until then, apps keep the old version.
