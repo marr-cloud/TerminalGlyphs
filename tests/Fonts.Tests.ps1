@@ -504,7 +504,35 @@ Describe 'Resolve-NerdFontPackage' {
         Resolve-NerdFontPackage -Name $Name -PackageMap $map | Should -BeExactly $Expected
     }
 
+    It 'returns nothing for variants that only JetBrainsMono and Meslo have (<Name>)' -ForEach @(@{ Name = 'HackS' }, @{ Name = 'FiraCodeNL' }, @{ Name = 'JetBrainsMonoS' }, @{ Name = 'MesloLGNL' }) {
+        Resolve-NerdFontPackage -Name $Name -PackageMap $map | Should -BeNullOrEmpty
+    }
+
     It 'returns nothing for <Name>' -ForEach @(@{ Name = 'Nope' }, @{ Name = 'HackXYZ' }, @{ Name = 'Nerd Font' }, @{ Name = '' }) {
         Resolve-NerdFontPackage -Name $Name -PackageMap $map | Should -BeNullOrEmpty
+    }
+}
+
+Describe 'Get-NerdFontPackageSuggestion' {
+    BeforeAll {
+        $map = @{ JetBrainsMono = 'JetBrainsMono'; CaskaydiaCove = 'CascadiaCode'; CaskaydiaMono = 'CascadiaMono'; MesloLG = 'Meslo'; Hack = 'Hack'; Monaspice = 'Monaspace' }
+    }
+
+    It 'suggests <Expected> for <Name>' -ForEach @(
+        @{ Name = 'Caskaydia Cov'; Expected = 'CascadiaCode' }
+        @{ Name = 'JetBrains'; Expected = 'JetBrainsMono' }
+        @{ Name = 'MonaspiceNe Nerd Font'; Expected = 'Monaspace' }
+        @{ Name = 'HackS'; Expected = 'Hack' }
+    ) {
+        @(Get-NerdFontPackageSuggestion -Name $Name -PackageMap $map) | Should -Contain $Expected
+    }
+
+    It 'lists each package once and at most five' {
+        $suggestions = @(Get-NerdFontPackageSuggestion -Name 'Caskaydia' -PackageMap $map)
+        $suggestions | Should -Be @('CascadiaCode', 'CascadiaMono')
+    }
+
+    It 'suggests nothing for <Name>' -ForEach @(@{ Name = 'Zzzz' }, @{ Name = '' }, @{ Name = 'Nerd Font' }) {
+        Get-NerdFontPackageSuggestion -Name $Name -PackageMap $map | Should -BeNullOrEmpty
     }
 }

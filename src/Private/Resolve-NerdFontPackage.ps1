@@ -18,7 +18,7 @@ function Resolve-NerdFontPackage {
         [System.Collections.IDictionary]$PackageMap
     )
 
-    $key = ($Name -replace '\s', '') -replace '(?i)(NerdFont(Mono|Propo)?|NF[MP]?)$', ''
+    $key = ConvertTo-NerdFontKey -Name $Name
     if (-not $key) { return }
     foreach ($package in $PackageMap.Values) {
         if ($package -eq $key) { return $package }
@@ -26,8 +26,10 @@ function Resolve-NerdFontPackage {
     foreach ($prefix in $PackageMap.Keys) {
         if ($prefix -eq $key) { return $PackageMap[$prefix] }
     }
-    foreach ($prefix in ($PackageMap.Keys | Sort-Object -Property Length -Descending)) {
-        if ($key.StartsWith($prefix, [System.StringComparison]::OrdinalIgnoreCase) -and $key.Substring($prefix.Length) -match '^(?i)(NL|[SML](DZ)?)$') {
+    # Only these families ship variants named after them: JetBrainsMonoNL and MesloLGS/LGM/LGL (with or without DZ).
+    $variants = @{ JetBrainsMono = '^(?i)NL$'; MesloLG = '^(?i)[SML](DZ)?$' }
+    foreach ($prefix in $variants.Keys) {
+        if ($PackageMap.Contains($prefix) -and $key.StartsWith($prefix, [System.StringComparison]::OrdinalIgnoreCase) -and $key.Substring($prefix.Length) -match $variants[$prefix]) {
             return $PackageMap[$prefix]
         }
     }

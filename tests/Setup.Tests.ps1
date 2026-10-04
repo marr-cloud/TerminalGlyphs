@@ -168,6 +168,10 @@ Describe 'Install-TerminalGlyphSetup' {
         { Install-TerminalGlyphSetup -Family 'JetBrains' } | Should -Throw '*Did you mean*JetBrainsMono*'
     }
 
+    It 'suggests the package of a font name it does not resolve' {
+        { Install-TerminalGlyphSetup -Family 'MonaspiceNe Nerd Font' } | Should -Throw '*Did you mean Monaspace*'
+    }
+
     It 'accepts the font name in -Family (<Name>)' -ForEach @(
         @{ Name = 'CaskaydiaCove'; Expected = 'CascadiaCode' }
         @{ Name = 'MesloLGS Nerd Font Mono'; Expected = 'Meslo' }

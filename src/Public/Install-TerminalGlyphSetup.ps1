@@ -53,13 +53,10 @@ function Install-TerminalGlyphSetup {
     $nerdFonts = Read-NerdFontIndex
     $version = [version]$nerdFonts['version']
     $packageMap = $nerdFonts['packages']
-    $knownPackages = @($packageMap.Values | Sort-Object -Unique)
     $requested = foreach ($name in $Family) {
         $match = Resolve-NerdFontPackage -Name $name -PackageMap $packageMap
         if (-not $match) {
-            $stem = ($name -replace '\s', '')
-            $stem = $stem.Substring(0, [Math]::Min(4, $stem.Length))
-            $similar = @(if ($stem) { $knownPackages | Where-Object { $_.Contains($stem, [System.StringComparison]::OrdinalIgnoreCase) } | Select-Object -First 5 })
+            $similar = @(Get-NerdFontPackageSuggestion -Name $name -PackageMap $packageMap)
             $suggestion = if ($similar.Count -gt 0) { " Did you mean $($similar -join ', ')?" } else { ' Use a release package name such as JetBrainsMono, FiraCode, CascadiaCode, Hack or Meslo.' }
             throw "Unknown Nerd Fonts package '$name'.$suggestion Press Tab after -Family to list the packages."
         }
