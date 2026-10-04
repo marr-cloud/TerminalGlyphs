@@ -9,6 +9,7 @@
 .EXAMPLE
     ./tools/Install-NerdFont.ps1 -Family JetBrainsMono, FiraCode -Version 3.5.1
 #>
+#Requires -Version 7.4
 [CmdletBinding(SupportsShouldProcess)]
 param(
     [Parameter(Mandatory)]
@@ -22,7 +23,17 @@ if (-not $IsWindows) { throw 'This script installs fonts for the current Windows
 
 $fontDir = [System.IO.Path]::Combine($env:LOCALAPPDATA, 'Microsoft', 'Windows', 'Fonts')
 foreach ($stale in (Get-ChildItem -LiteralPath $fontDir -Filter '*.old-nerdfont' -ErrorAction SilentlyContinue)) {
-    try { Remove-Item -LiteralPath $stale.FullName -Force } catch { Write-Verbose -Message "Still in use: $($stale.Name)" }
+    $original = $stale.FullName.Substring(0, $stale.FullName.Length - '.old-nerdfont'.Length)
+    if ([System.IO.File]::Exists($original)) {
+        if (-not $PSCmdlet.ShouldProcess($stale.FullName, 'Delete stale renamed font')) { continue }
+        try { Remove-Item -LiteralPath $stale.FullName -Force } catch { Write-Verbose -Message "Still in use: $($stale.Name)" }
+    } else {
+        if (-not $PSCmdlet.ShouldProcess($stale.FullName, "Restore missing font $([System.IO.Path]::GetFileName($original))")) { continue }
+        try {
+            Move-Item -LiteralPath $stale.FullName -Destination $original
+            Write-Warning -Message "Restored $([System.IO.Path]::GetFileName($original)) from a leftover .old-nerdfont file (a previous run did not finish)."
+        } catch { Write-Verbose -Message "Could not restore: $($stale.Name)" }
+    }
 }
 
 $work = [System.IO.Path]::Combine([System.IO.Path]::GetTempPath(), "nerd-fonts-$Version-$([guid]::NewGuid())")
@@ -33,7 +44,7 @@ try {
         Invoke-WebRequest -Uri "https://github.com/ryanoasis/nerd-fonts/releases/download/v$Version/$name.tar.xz" -OutFile $archive
         $extract = [System.IO.Path]::Combine($work, $name)
         [System.IO.Directory]::CreateDirectory($extract) | Out-Null
-        tar -xf $archive -C $extract
+        & ([System.IO.Path]::Combine($env:SystemRoot, 'System32', 'tar.exe')) -xf $archive -C $extract
         if ($LASTEXITCODE -ne 0) { throw "tar failed to extract $archive" }
 
         $replaced = 0
@@ -48,8 +59,13 @@ try {
             } catch {
                 try {
                     Move-Item -LiteralPath $target -Destination "$target.old-nerdfont" -Force
-                    Copy-Item -LiteralPath $font.FullName -Destination $target
-                    $replaced++
+                    try {
+                        Copy-Item -LiteralPath $font.FullName -Destination $target
+                        $replaced++
+                    } catch {
+                        Move-Item -LiteralPath "$target.old-nerdfont" -Destination $target -Force
+                        $failed.Add($font.Name)
+                    }
                 } catch {
                     $failed.Add($font.Name)
                 }
@@ -61,5 +77,5 @@ try {
         }
     }
 } finally {
-    Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $work -Recurse -Force -WhatIf:$false -ErrorAction SilentlyContinue
 }
