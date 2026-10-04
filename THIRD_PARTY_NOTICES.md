@@ -31,4 +31,13 @@ TerminalGlyphs includes material from the following projects.
 
     Copyright (c) 2014 Ryan L McIntyre
 
+## nvim-web-devicons
+
+- Source: https://github.com/nvim-tree/nvim-web-devicons (commit 58447c1)
+- Used for: file name and extension icons and colors imported into `themes/` with `tools/Import-DeviconsMapping.ps1`,
+  and the vendored data in `vendor/nvim-web-devicons/`.
+- License: MIT
+
+    Copyright (c) 2023 nvim-tree
+
 The full MIT License text is in `LICENSE`. Each copyright notice above applies to the material listed for it.

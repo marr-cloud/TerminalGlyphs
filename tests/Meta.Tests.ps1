@@ -15,6 +15,7 @@ Describe 'licensing' {
         @{ Project = 'Terminal-Icons'; Copyright = 'Copyright (c) 2019 Brandon Olin' }
         @{ Project = 'DirColors'; Copyright = 'Copyright 2017 Dustin L. Howett' }
         @{ Project = 'Nerd Fonts'; Copyright = 'Copyright (c) 2014 Ryan L McIntyre' }
+        @{ Project = 'nvim-web-devicons'; Copyright = 'Copyright (c) 2023 nvim-tree' }
     ) {
         $notices = Get-RepoText 'THIRD_PARTY_NOTICES.md'
         $notices | Should -Match ([regex]::Escape($Project))
