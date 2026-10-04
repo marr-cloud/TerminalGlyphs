@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Readable Dracula colors: 14 colors below 3:1 contrast on the Dracula background (`#282A36`) are lightened, keeping
+  their hue: Python and uv (`pyproject.toml`, `uv.lock`, `.venv`), Terraform, Julia, `.DS_Store` and `vue.config.*`. The
+  contrast test now covers the Dracula theme too.
+
 ## [0.3.2] - 2026-10-04
 
 ### Changed
