@@ -48,3 +48,90 @@ Describe 'Read-FontInfo' {
         $info.Version | Should -Not -BeNullOrEmpty
     }
 }
+
+Describe 'Get-FontLocation' {
+    It 'returns the per-user font folder of this platform' {
+        $location = Get-FontLocation
+        if ($IsWindows) {
+            $location.Platform | Should -Be 'Windows'
+            $location.Directory | Should -Be (Join-Path $env:LOCALAPPDATA 'Microsoft' 'Windows' 'Fonts')
+        } elseif ($IsMacOS) {
+            $location.Platform | Should -Be 'MacOS'
+            $location.Directory | Should -Be (Join-Path $HOME 'Library' 'Fonts')
+        } else {
+            $location.Platform | Should -Be 'Linux'
+        }
+    }
+
+    It 'honors XDG_DATA_HOME on Linux' -Skip:(-not $IsLinux) {
+        $saved = $env:XDG_DATA_HOME
+        try {
+            $env:XDG_DATA_HOME = Join-Path $TestDrive 'xdg'
+            (Get-FontLocation).Directory | Should -Be (Join-Path $TestDrive 'xdg' 'fonts')
+        } finally {
+            $env:XDG_DATA_HOME = $saved
+        }
+    }
+}
+
+Describe 'Get-NerdFontInstallation' {
+    BeforeAll {
+        $map = @{
+            JetBrainsMono = 'JetBrainsMono'; FiraCode = 'FiraCode'; MesloLG = 'Meslo'; Hack = 'Hack'
+            Iosevka = 'Iosevka'; IosevkaTerm = 'IosevkaTerm'; IosevkaTermSlab = 'IosevkaTermSlab'
+        }
+        $dir = Join-Path $TestDrive 'detect'
+        New-TestFont -Path (Join-Path $dir 'JetBrainsMonoNerdFontMono-Regular.ttf') | Out-Null
+        New-TestFont -Path (Join-Path $dir 'JetBrainsMonoNLNerdFont-Bold.ttf') -Version 'Version 2.304;Nerd Fonts 3.0.2' | Out-Null
+        New-TestFont -Path (Join-Path $dir 'jetbrainsmononerdfont-italic.TTF') | Out-Null
+        New-TestFont -Path (Join-Path $dir 'FiraCodeNerdFont-Regular.ttf') | Out-Null
+        New-TestFont -Path (Join-Path $dir 'MesloLGSDZNerdFont-Regular.ttf') | Out-Null
+        New-TestFont -Path (Join-Path $dir 'IosevkaTermSlabNerdFont-Regular.ttf') | Out-Null
+        New-TestFont -Path (Join-Path $dir 'NerdFonts' 'Hack' 'HackNerdFont-Regular.ttf') | Out-Null
+        [System.IO.File]::WriteAllText((Join-Path $dir 'HackNerdFontMono-Regular.ttf'), 'not a font')
+        New-TestFont -Path (Join-Path $dir 'FooBarNerdFont-Regular.ttf') | Out-Null
+        New-TestFont -Path (Join-Path $dir 'Arial.ttf') | Out-Null
+        [System.IO.File]::WriteAllText((Join-Path $dir 'FiraCodeNerdFont-Bold.ttf.20260101000000.old-nerdfont'), 'old')
+        $families = @(Get-NerdFontInstallation -FontDirectory $dir -PackageMap $map -MinimumVersion '3.5.1')
+        function Get-Family([string]$Name) { $families | Where-Object Name -EQ $Name }
+    }
+
+    It 'groups variants and other casings under one package and reports the oldest version' {
+        $jetbrains = Get-Family 'JetBrainsMono'
+        $jetbrains.Package | Should -Be 'JetBrainsMono'
+        $jetbrains.Files.Count | Should -Be 3
+        $jetbrains.Version | Should -Be ([version]'3.0.2')
+        $jetbrains.IsOutdated | Should -BeTrue
+    }
+
+    It 'reports current families as not outdated' {
+        (Get-Family 'FiraCode').IsOutdated | Should -BeFalse
+        (Get-Family 'FiraCode').Files.Count | Should -Be 1
+    }
+
+    It 'uses the longest known prefix (<Name>)' -ForEach @(@{ Name = 'Meslo' }, @{ Name = 'IosevkaTermSlab' }) {
+        (Get-Family $Name).Package | Should -Be $Name
+    }
+
+    It 'searches subfolders and treats unreadable files as outdated' {
+        $hack = Get-Family 'Hack'
+        $hack.Files.Count | Should -Be 2
+        $hack.IsOutdated | Should -BeTrue
+    }
+
+    It 'reports unknown families without a package' {
+        $unknown = Get-Family 'FooBar'
+        $unknown.Package | Should -BeNullOrEmpty
+        $unknown.Files.Count | Should -Be 1
+    }
+
+    It 'ignores fonts that are not Nerd Fonts and renamed leftovers' {
+        $families.Files | Should -Not -Contain (Join-Path $dir 'Arial.ttf')
+        @($families.Files | Where-Object { $_ -like '*.old-nerdfont' }).Count | Should -Be 0
+        $families.Count | Should -Be 6
+    }
+
+    It 'returns nothing for a missing folder' {
+        Get-NerdFontInstallation -FontDirectory (Join-Path $TestDrive 'nope') -PackageMap $map -MinimumVersion '3.5.1' | Should -BeNullOrEmpty
+    }
+}
