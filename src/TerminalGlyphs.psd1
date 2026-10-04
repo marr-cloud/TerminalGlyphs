@@ -1,6 +1,6 @@
 @{
     RootModule           = 'TerminalGlyphs.psm1'
-    ModuleVersion        = '0.2.2'
+    ModuleVersion        = '0.3.0'
     CompatiblePSEditions = @('Core')
     GUID                 = '191db48e-7499-4eff-8584-fb8c62a2ddee'
     Author               = 'marr-cloud'
