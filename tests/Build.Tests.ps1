@@ -168,3 +168,50 @@ Describe 'build validation' {
         { & $buildScript -ThemesPath $themes -OutputPath (Join-Path $TestDrive 'bad') *> $null } | Should -Throw "*$Expected*"
     }
 }
+
+Describe 'vendored data checks' {
+    BeforeAll {
+        function Copy-Vendor([string]$Name) {
+            $vendor = Join-Path $TestDrive $Name
+            Copy-Item -LiteralPath (Join-Path $script:RepoRoot 'vendor' 'nerd-fonts') -Destination $vendor -Recurse
+            $vendor
+        }
+    }
+
+    It 'fails when a vendored file does not match manifest.json' {
+        $vendor = Copy-Vendor 'vendor-tampered'
+        Add-Content -LiteralPath (Join-Path $vendor 'SHA-256.txt') -Value "$('0' * 64)  Extra.tar.xz"
+        { & $buildScript -VendorPath $vendor -OutputPath (Join-Path $TestDrive 'tampered-out') *> $null } | Should -Throw '*SHA-256.txt*manifest.json*'
+    }
+
+    It 'fails when manifest.json names another Nerd Fonts version than glyphnames.json' {
+        $vendor = Copy-Vendor 'vendor-version'
+        $manifest = Join-Path $vendor 'manifest.json'
+        [System.IO.File]::WriteAllText($manifest, [System.IO.File]::ReadAllText($manifest).Replace('"3.5.1"', '"3.6.0"'))
+        { & $buildScript -VendorPath $vendor -OutputPath (Join-Path $TestDrive 'version-out') *> $null } | Should -Throw '*3.6.0*3.5.1*'
+    }
+}
+
+Describe 'vendored data checks with an incomplete manifest' {
+    BeforeAll {
+        function Copy-Vendor([string]$Name) {
+            $vendor = Join-Path $TestDrive $Name
+            Copy-Item -LiteralPath (Join-Path $script:RepoRoot 'vendor' 'nerd-fonts') -Destination $vendor -Recurse
+            $vendor
+        }
+    }
+
+    It 'fails when manifest.json does not list a file the build reads' {
+        $vendor = Copy-Vendor 'vendor-unlisted'
+        $manifest = Join-Path $vendor 'manifest.json'
+        $json = [System.IO.File]::ReadAllText($manifest) -replace '(?m)^\s*"fonts\.json": "[0-9A-F]{64}",\r?\n', ''
+        [System.IO.File]::WriteAllText($manifest, $json)
+        { & $buildScript -VendorPath $vendor -OutputPath (Join-Path $TestDrive 'unlisted-out') *> $null } | Should -Throw '*manifest.json does not list fonts.json*'
+    }
+
+    It 'names the missing file when a listed file does not exist' {
+        $vendor = Copy-Vendor 'vendor-missing'
+        Remove-Item -LiteralPath (Join-Path $vendor 'fonts.json')
+        { & $buildScript -VendorPath $vendor -OutputPath (Join-Path $TestDrive 'missing-out') *> $null } | Should -Throw '*fonts.json is listed in manifest.json but missing*'
+    }
+}

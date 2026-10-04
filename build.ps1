@@ -20,6 +20,8 @@ param(
 
     [string]$OutputPath = ([System.IO.Path]::Combine($PSScriptRoot, 'out')),
 
+    [string]$VendorPath = ([System.IO.Path]::Combine($PSScriptRoot, 'vendor', 'nerd-fonts')),
+
     [string[]]$Tag,
 
     [string[]]$ExcludeTag = @('Performance')
@@ -31,8 +33,29 @@ foreach ($helper in 'Read-JsoncFile', 'Get-GlyphThemeEntry', 'Test-GlyphThemeEnt
     . ([System.IO.Path]::Combine($root, 'src', 'Private', "$helper.ps1"))
 }
 
+function Confirm-NerdFontData {
+    param([string]$VendorPath)
+    # Every vendored Nerd Fonts file the build reads must match manifest.json, so a partial update fails here instead
+    # of at download time.
+    $manifestPath = [System.IO.Path]::Combine($VendorPath, 'manifest.json')
+    if (-not [System.IO.File]::Exists($manifestPath)) { throw "$manifestPath is missing; it records the version and SHA-256 of the vendored Nerd Fonts files." }
+    $manifest = Read-JsoncFile -Path $manifestPath
+    $files = $manifest['files']
+    foreach ($name in 'glyphnames.json', 'fonts.json', 'SHA-256.txt') {
+        if ($null -eq $files -or -not $files.Contains($name)) { throw "manifest.json does not list $name; add its SHA-256 to $manifestPath." }
+        $path = [System.IO.Path]::Combine($VendorPath, $name)
+        if (-not [System.IO.File]::Exists($path)) { throw "$name is listed in manifest.json but missing: $path" }
+        $actual = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash
+        if ($actual -ne $files[$name]) {
+            throw "$path does not match manifest.json (expected SHA-256 $($files[$name]), got $actual). Update the file and manifest.json together."
+        }
+    }
+    [string]$manifest['version']
+}
+
 function Get-NerdGlyphSet {
-    $raw = Read-JsoncFile -Path ([System.IO.Path]::Combine($root, 'vendor', 'nerd-fonts', 'glyphnames.json'))
+    param([string]$VendorPath)
+    $raw = Read-JsoncFile -Path ([System.IO.Path]::Combine($VendorPath, 'glyphnames.json'))
     $map = [System.Collections.Generic.SortedDictionary[string, string]]::new([System.StringComparer]::Ordinal)
     foreach ($name in $raw.Keys) {
         if ($name -ceq 'METADATA') { continue }
@@ -77,9 +100,13 @@ function Read-ThemeDirectory {
 }
 
 function Invoke-ModuleBuild {
-    param([string]$ThemesPath, [string]$OutputPath)
+    param([string]$ThemesPath, [string]$OutputPath, [string]$VendorPath)
     $manifest = Import-PowerShellDataFile -LiteralPath ([System.IO.Path]::Combine($root, 'src', 'TerminalGlyphs.psd1'))
-    $nerd = Get-NerdGlyphSet
+    $vendorVersion = Confirm-NerdFontData -VendorPath $VendorPath
+    $nerd = Get-NerdGlyphSet -VendorPath $VendorPath
+    if ($vendorVersion -ne $nerd.Version) {
+        throw "vendor/nerd-fonts/manifest.json is for Nerd Fonts $vendorVersion but glyphnames.json is $($nerd.Version)."
+    }
     $errors = [System.Collections.Generic.List[string]]::new()
     $iconThemes = Read-ThemeDirectory -Path ([System.IO.Path]::Combine($ThemesPath, 'icons')) -ThemeType Icon -Glyphs $nerd.Glyphs -Errors $errors
     $colorThemes = Read-ThemeDirectory -Path ([System.IO.Path]::Combine($ThemesPath, 'colors')) -ThemeType Color -Glyphs $nerd.Glyphs -Errors $errors
@@ -115,12 +142,12 @@ function Invoke-ModuleBuild {
     [System.IO.File]::WriteAllText([System.IO.Path]::Combine($moduleDir, 'TerminalGlyphs.data.json'), ($data | ConvertTo-Json -Depth 10 -Compress), $utf8)
     [System.IO.File]::WriteAllText([System.IO.Path]::Combine($moduleDir, 'glyphs.json'), ($nerd.Glyphs | ConvertTo-Json -Compress), $utf8)
 
-    $fontIndex = Read-JsoncFile -Path ([System.IO.Path]::Combine($root, 'vendor', 'nerd-fonts', 'fonts.json'))
+    $fontIndex = Read-JsoncFile -Path ([System.IO.Path]::Combine($VendorPath, 'fonts.json'))
     $packages = [System.Collections.Generic.SortedDictionary[string, string]]::new([System.StringComparer]::Ordinal)
     foreach ($font in $fontIndex['fonts']) { $packages[$font['patchedName'].Replace(' ', '')] = $font['folderName'] }
     # Checksums ship with the module, so a download is never checked against a file from the same server.
     $archives = [System.Collections.Generic.SortedDictionary[string, string]]::new([System.StringComparer]::Ordinal)
-    foreach ($line in [System.IO.File]::ReadAllLines([System.IO.Path]::Combine($root, 'vendor', 'nerd-fonts', 'SHA-256.txt'))) {
+    foreach ($line in [System.IO.File]::ReadAllLines([System.IO.Path]::Combine($VendorPath, 'SHA-256.txt'))) {
         if ($line -match '^([0-9a-f]{64})\s+(\S+)\.tar\.xz$') { $archives[$Matches[2]] = $Matches[1] }
     }
     foreach ($package in $packages.Values) {
@@ -145,7 +172,7 @@ function Invoke-ModuleBuild {
     Write-Host "Built TerminalGlyphs $($manifest.ModuleVersion) -> $moduleDir"
 }
 
-Invoke-ModuleBuild -ThemesPath $ThemesPath -OutputPath $OutputPath
+Invoke-ModuleBuild -ThemesPath $ThemesPath -OutputPath $OutputPath -VendorPath $VendorPath
 
 if ($Task -eq 'Test') {
     Import-Module Pester -MinimumVersion 5.9.0 -MaximumVersion 5.99.99 -ErrorAction Stop

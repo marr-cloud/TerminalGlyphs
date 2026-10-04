@@ -235,14 +235,35 @@ Describe 'Save-NerdFontRelease' {
 }
 
 Describe 'Invoke-FontCacheRefresh' {
+    BeforeAll {
+        # fontconfig writes its cache under XDG_CACHE_HOME: keep it in TestDrive, not in the real ~/.cache/fontconfig.
+        $savedCacheHome = $env:XDG_CACHE_HOME
+        $env:XDG_CACHE_HOME = Join-Path $TestDrive 'cache'
+        # fc-cache fails on a folder that contains its own cache, so the tests scan folders beside it.
+        $scan = Join-Path $TestDrive 'fc-scan'
+        [System.IO.Directory]::CreateDirectory($scan) | Out-Null
+    }
+
+    AfterAll {
+        $env:XDG_CACHE_HOME = $savedCacheHome
+    }
+
+    # As root, fc-cache writes to the system cache instead, so the test only runs as a normal user.
+    It 'writes the fontconfig cache under TestDrive' -Skip:(-not $IsLinux -or -not (Get-Command -Name 'fc-cache' -CommandType Application -ErrorAction Ignore) -or (& id -u) -eq '0') {
+        $fonts = Join-Path $TestDrive 'fc-fonts'
+        New-TestFont -Path (Join-Path $fonts 'TestNerdFont-Regular.ttf') | Out-Null
+        Invoke-FontCacheRefresh -Directory $fonts | Out-Null
+        Join-Path $env:XDG_CACHE_HOME 'fontconfig' | Should -Exist
+    }
+
     It 'returns whether fc-cache ran' {
         $expected = [bool](Get-Command -Name 'fc-cache' -CommandType Application -ErrorAction Ignore)
-        Invoke-FontCacheRefresh -Directory $TestDrive | Should -Be $expected
+        Invoke-FontCacheRefresh -Directory $scan | Should -Be $expected
     }
 
     It 'refreshes several folders and skips missing ones' {
         $expected = [bool](Get-Command -Name 'fc-cache' -CommandType Application -ErrorAction Ignore)
-        Invoke-FontCacheRefresh -Directory $TestDrive, (Join-Path $TestDrive 'missing') | Should -Be $expected
+        Invoke-FontCacheRefresh -Directory $scan, (Join-Path $TestDrive 'missing') | Should -Be $expected
     }
 }
 
@@ -366,6 +387,15 @@ Describe 'Install-NerdFontFile' {
         $result.Failed.Count | Should -Be 1
         @(Get-ChildItem -LiteralPath $case.Fonts -Filter '*.old-nerdfont').Count | Should -Be 0
     }
+
+    It 'counts a file that fails in several folders once' {
+        $case = New-Case
+        $first = New-TestFont -Path (Join-Path $case.Root '.fonts' 'TestNerdFontMono-Regular.ttf') -FullName 'Old A'
+        $second = New-TestFont -Path (Join-Path $case.Root '.local' 'TestNerdFontMono-Regular.ttf') -FullName 'Old B'
+        Mock Copy-Item { throw [System.IO.IOException]::new('Permission denied.') }
+        $result = Install-NerdFontFile -SourceFile $case.Source[0] -TargetDirectory $case.Fonts -Platform Linux -InstalledFile $first, $second -UpdateOnly
+        $result.Failed | Should -Be @('TestNerdFontMono-Regular.ttf')
+    }
 }
 
 Describe 'Remove-StaleFontFile' {
@@ -484,7 +514,7 @@ Describe 'Remove-StaleFontFile approved changes' {
 }
 Describe 'Resolve-NerdFontPackage' {
     BeforeAll {
-        $map = @{ JetBrainsMono = 'JetBrainsMono'; CaskaydiaCove = 'CascadiaCode'; CaskaydiaMono = 'CascadiaMono'; MesloLG = 'Meslo'; FiraCode = 'FiraCode'; Hack = 'Hack' }
+        $map = @{ JetBrainsMono = 'JetBrainsMono'; CaskaydiaCove = 'CascadiaCode'; CaskaydiaMono = 'CascadiaMono'; MesloLG = 'Meslo'; FiraCode = 'FiraCode'; Hack = 'Hack'; Overpass = 'Overpass'; OpenDyslexic = 'OpenDyslexic' }
     }
 
     It 'resolves <Name> to <Expected>' -ForEach @(
@@ -500,11 +530,45 @@ Describe 'Resolve-NerdFontPackage' {
         @{ Name = 'MesloLGS'; Expected = 'Meslo' }
         @{ Name = 'MesloLGM NF'; Expected = 'Meslo' }
         @{ Name = 'MesloLGLDZ Nerd Font Mono'; Expected = 'Meslo' }
+        @{ Name = 'OverpassM Nerd Font'; Expected = 'Overpass' }
+        @{ Name = 'OpenDyslexicM'; Expected = 'OpenDyslexic' }
     ) {
         Resolve-NerdFontPackage -Name $Name -PackageMap $map | Should -BeExactly $Expected
     }
 
+    It 'returns nothing for variants that only JetBrainsMono and Meslo have (<Name>)' -ForEach @(@{ Name = 'HackS' }, @{ Name = 'FiraCodeNL' }, @{ Name = 'JetBrainsMonoS' }, @{ Name = 'MesloLGNL' }) {
+        Resolve-NerdFontPackage -Name $Name -PackageMap $map | Should -BeNullOrEmpty
+    }
+
     It 'returns nothing for <Name>' -ForEach @(@{ Name = 'Nope' }, @{ Name = 'HackXYZ' }, @{ Name = 'Nerd Font' }, @{ Name = '' }) {
         Resolve-NerdFontPackage -Name $Name -PackageMap $map | Should -BeNullOrEmpty
+    }
+}
+
+Describe 'Get-NerdFontPackageSuggestion' {
+    BeforeAll {
+        $map = @{ JetBrainsMono = 'JetBrainsMono'; CaskaydiaCove = 'CascadiaCode'; CaskaydiaMono = 'CascadiaMono'; MesloLG = 'Meslo'; Hack = 'Hack'; Monaspice = 'Monaspace'; Terminess = 'Terminus'; iMWriting = 'iA-Writer'; BigBlueTerm = 'BigBlueTerminal'; IosevkaTerm = 'IosevkaTerm' }
+    }
+
+    It 'suggests <Expected> for <Name>' -ForEach @(
+        @{ Name = 'Caskaydia Cov'; Expected = 'CascadiaCode' }
+        @{ Name = 'JetBrains'; Expected = 'JetBrainsMono' }
+        @{ Name = 'MonaspiceNe Nerd Font'; Expected = 'Monaspace' }
+        @{ Name = 'HackS'; Expected = 'Hack' }
+    ) {
+        @(Get-NerdFontPackageSuggestion -Name $Name -PackageMap $map) | Should -Contain $Expected
+    }
+
+    It 'lists each package once and at most five' {
+        $suggestions = @(Get-NerdFontPackageSuggestion -Name 'Caskaydia' -PackageMap $map)
+        $suggestions | Should -Be @('CascadiaCode', 'CascadiaMono')
+    }
+
+    It 'puts the package whose name starts the font name first (<Name>)' -ForEach @(@{ Name = 'Terminus TTF'; Expected = 'Terminus' }, @{ Name = 'iA Writer Mono'; Expected = 'iA-Writer' }) {
+        @(Get-NerdFontPackageSuggestion -Name $Name -PackageMap $map)[0] | Should -Be $Expected
+    }
+
+    It 'suggests nothing for <Name>' -ForEach @(@{ Name = 'Zzzz' }, @{ Name = '' }, @{ Name = 'Nerd Font' }, @{ Name = 'Mo' }, @{ Name = 'M' }) {
+        Get-NerdFontPackageSuggestion -Name $Name -PackageMap $map | Should -BeNullOrEmpty
     }
 }

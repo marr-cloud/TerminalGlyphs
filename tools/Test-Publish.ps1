@@ -2,8 +2,9 @@
 .SYNOPSIS
     Rehearses publishing: publishes the built module to a temporary local repository and imports it back.
 .DESCRIPTION
-    Nothing is installed: the module is saved to a temporary folder and imported in a child pwsh. The temporary
-    repository is always unregistered and its folders removed. Run ./build.ps1 first.
+    Nothing is installed: the module is saved to a temporary folder. Registering the temporary repository, publishing,
+    saving and importing run in a child pwsh, so every file handle is released when it exits and the temporary folder
+    can always be removed. The temporary repository is always unregistered. Run ./build.ps1 first.
 .EXAMPLE
     ./build.ps1; ./tools/Test-Publish.ps1
 #>
@@ -19,29 +20,40 @@ $built = [System.IO.Path]::Combine($root, 'out', 'TerminalGlyphs', $version)
 if (-not [System.IO.Directory]::Exists($built)) { throw "Module not built: $built. Run ./build.ps1 first." }
 
 $work = [System.IO.Path]::Combine([System.IO.Path]::GetTempPath(), "terminalglyphs-publish-$([guid]::NewGuid())")
-$feed = [System.IO.Path]::Combine($work, 'feed')
-$saved = [System.IO.Path]::Combine($work, 'saved')
+[System.IO.Directory]::CreateDirectory($work) | Out-Null
+# Paths reach the child through environment variables, so quotes or spaces in them cannot break its command.
+$env:TERMINALGLYPHS_REHEARSAL_BUILT = $built
+$env:TERMINALGLYPHS_REHEARSAL_WORK = $work
+$env:TERMINALGLYPHS_REHEARSAL_VERSION = $version
 $repository = "TerminalGlyphsRehearsal$([guid]::NewGuid().ToString('N'))"
-[System.IO.Directory]::CreateDirectory($feed) | Out-Null
-[System.IO.Directory]::CreateDirectory($saved) | Out-Null
+$env:TERMINALGLYPHS_REHEARSAL_REPOSITORY = $repository
+$rehearsal = {
+    $ErrorActionPreference = 'Stop'
+    $feed = [System.IO.Path]::Combine($env:TERMINALGLYPHS_REHEARSAL_WORK, 'feed')
+    $saved = [System.IO.Path]::Combine($env:TERMINALGLYPHS_REHEARSAL_WORK, 'saved')
+    [System.IO.Directory]::CreateDirectory($feed) | Out-Null
+    [System.IO.Directory]::CreateDirectory($saved) | Out-Null
+    Register-PSResourceRepository -Name $env:TERMINALGLYPHS_REHEARSAL_REPOSITORY -Uri $feed -Trusted
+    try {
+        Publish-PSResource -Path $env:TERMINALGLYPHS_REHEARSAL_BUILT -Repository $env:TERMINALGLYPHS_REHEARSAL_REPOSITORY
+        Save-PSResource -Name 'TerminalGlyphs' -Version $env:TERMINALGLYPHS_REHEARSAL_VERSION -Repository $env:TERMINALGLYPHS_REHEARSAL_REPOSITORY -Path $saved -TrustRepository
+        $savedManifest = [System.IO.Path]::Combine($saved, 'TerminalGlyphs', $env:TERMINALGLYPHS_REHEARSAL_VERSION, 'TerminalGlyphs.psd1')
+        (Import-Module -Name $savedManifest -PassThru).ExportedFunctions.Count
+    } finally {
+        Unregister-PSResourceRepository -Name $env:TERMINALGLYPHS_REHEARSAL_REPOSITORY -ErrorAction Ignore
+    }
+}
 try {
-    Register-PSResourceRepository -Name $repository -Uri $feed -Trusted
-    Publish-PSResource -Path $built -Repository $repository
-    Save-PSResource -Name 'TerminalGlyphs' -Version $version -Repository $repository -Path $saved -TrustRepository
-    $savedManifest = [System.IO.Path]::Combine($saved, 'TerminalGlyphs', $version, 'TerminalGlyphs.psd1')
-    $count = & ([Environment]::ProcessPath) -NoProfile -NonInteractive -Command "(Import-Module '$savedManifest' -PassThru).ExportedFunctions.Count"
-    if ($LASTEXITCODE -ne 0 -or [int]$count -ne $manifest.FunctionsToExport.Count) {
+    $count = @(& ([Environment]::ProcessPath) -NoProfile -NonInteractive -Command $rehearsal)[-1]
+    if ($LASTEXITCODE -ne 0) { throw "The publish rehearsal failed (exit code $LASTEXITCODE); see the errors above." }
+    if ("$count" -ne "$($manifest.FunctionsToExport.Count)") {
         throw "The published module exported $count functions; expected $($manifest.FunctionsToExport.Count)."
     }
     Write-Host "Publish rehearsal OK: TerminalGlyphs $version exports $count functions."
 } finally {
+    Remove-Item -Path 'Env:TERMINALGLYPHS_REHEARSAL_*' -ErrorAction Ignore
+    # The child unregisters the repository; this covers a child that was killed before it could.
     Unregister-PSResourceRepository -Name $repository -ErrorAction Ignore
-    # PSResourceGet can keep a handle on the package for a moment, so retry the cleanup.
-    [GC]::Collect()
-    [GC]::WaitForPendingFinalizers()
-    for ($attempt = 1; $attempt -le 5 -and [System.IO.Directory]::Exists($work); $attempt++) {
-        Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction Ignore
-        if ([System.IO.Directory]::Exists($work)) { Start-Sleep -Milliseconds 500 }
-    }
-    if ([System.IO.Directory]::Exists($work)) { Write-Warning "Could not remove $work" }
+    Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction Ignore
+    if ([System.IO.Directory]::Exists($work)) { Write-Warning -Message "Could not remove $work" }
 }

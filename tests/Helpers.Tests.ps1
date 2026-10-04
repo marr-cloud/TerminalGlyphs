@@ -17,16 +17,20 @@ Describe 'vendored Nerd Fonts data' {
         ($raw.Keys | Where-Object { $_ -ne 'METADATA' }).Count | Should -Be 10995
     }
 
-    It 'includes the font index of the same release' {
-        $path = Join-Path $root 'vendor' 'nerd-fonts' 'fonts.json'
-        (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash | Should -Be '893E03F5FB079036AE19A05B30985C40603909F5C663919DA0760DF86FEEEFD6'
-        (Read-JsoncFile -Path $path)['fonts'].Count | Should -Be 72
+    It 'records the version and SHA-256 of every vendored data file in manifest.json' {
+        $vendor = Join-Path $root 'vendor' 'nerd-fonts'
+        $manifest = Read-JsoncFile -Path (Join-Path $vendor 'manifest.json')
+        $manifest['version'] | Should -Be '3.5.1'
+        @($manifest['files'].Keys | Sort-Object) | Should -Be @('fonts.json', 'glyphnames.json', 'SHA-256.txt')
+        foreach ($name in $manifest['files'].Keys) {
+            (Get-FileHash -LiteralPath (Join-Path $vendor $name) -Algorithm SHA256).Hash | Should -Be $manifest['files'][$name] -Because $name
+        }
     }
 
-    It 'includes the package checksums of the same release' {
-        $path = Join-Path $root 'vendor' 'nerd-fonts' 'SHA-256.txt'
-        (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash | Should -Be 'E03D7AD54547D83F1620719CBC89B5684BC0C6FB028160640AA322B5035A63FB'
-        @(Get-Content -LiteralPath $path | Where-Object { $_ -match '^[0-9a-f]{64}  \S+\.tar\.xz$' }).Count | Should -Be 72
+    It 'includes the font index and the package checksums of all 72 packages' {
+        $vendor = Join-Path $root 'vendor' 'nerd-fonts'
+        (Read-JsoncFile -Path (Join-Path $vendor 'fonts.json'))['fonts'].Count | Should -Be 72
+        @(Get-Content -LiteralPath (Join-Path $vendor 'SHA-256.txt') | Where-Object { $_ -match '^[0-9a-f]{64}  \S+\.tar\.xz$' }).Count | Should -Be 72
     }
 }
 

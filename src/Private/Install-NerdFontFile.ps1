@@ -47,6 +47,8 @@ function Install-NerdFontFile {
         Renamed  = 0
         Failed   = [System.Collections.Generic.List[string]]::new()
     }
+    # A file that fails in several folders is reported once.
+    $fail = { param([string]$Name) if (-not $result.Failed.Contains($Name)) { $result.Failed.Add($Name) } }
 
     foreach ($source in $SourceFile) {
         $name = [System.IO.Path]::GetFileName($source)
@@ -58,7 +60,7 @@ function Install-NerdFontFile {
                     continue
                 } catch {
                     if ($Platform -ne 'Windows') {
-                        $result.Failed.Add($name)
+                        & $fail $name
                         continue
                     }
                 }
@@ -67,14 +69,14 @@ function Install-NerdFontFile {
                 try {
                     Move-Item -LiteralPath $target -Destination $stale -Confirm:$false -WhatIf:$false -ErrorAction Stop
                 } catch {
-                    $result.Failed.Add($name)
+                    & $fail $name
                     continue
                 }
                 try {
                     Copy-Item -LiteralPath $source -Destination $target -Confirm:$false -WhatIf:$false -ErrorAction Stop
                     $result.Renamed++
                 } catch {
-                    $result.Failed.Add($name)
+                    & $fail $name
                     try {
                         Move-Item -LiteralPath $stale -Destination $target -Force -Confirm:$false -WhatIf:$false -ErrorAction Stop
                     } catch {
@@ -91,7 +93,7 @@ function Install-NerdFontFile {
         try {
             Copy-Item -LiteralPath $source -Destination $target -Force -Confirm:$false -WhatIf:$false -ErrorAction Stop
         } catch {
-            $result.Failed.Add($name)
+            & $fail $name
             continue
         }
         if ($Platform -eq 'Windows') {

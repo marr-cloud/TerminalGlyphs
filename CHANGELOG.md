@@ -6,6 +6,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- `-Family` accepts variant suffixes only for the families that ship them: `JetBrainsMonoNL`, `MesloLGS`/`LGM`/`LGL`
+  (with or without `DZ`), `OverpassM` and `OpenDyslexicM`. Unknown names now get suggestions from package and font
+  names (`MonaspiceNe` -> `Monaspace`, `'Terminus TTF'` -> `Terminus`, `'iA Writer Mono'` -> `iA-Writer`).
+- `build.ps1` checks the vendored Nerd Fonts data against `vendor/nerd-fonts/manifest.json` (version and SHA-256 of
+  each file), so a partial update fails the build instead of the download.
+- `tools/Test-Publish.ps1` runs the rehearsal in a child pwsh: no more retries to remove its temporary folder, and
+  temporary paths with quotes work.
+
+### Fixed
+
+- A font that cannot be replaced in several folders is counted once.
+- The fontconfig test no longer writes to the real `~/.cache/fontconfig`.
+
 ## [0.2.1] - 2026-10-04
 
 ### Added

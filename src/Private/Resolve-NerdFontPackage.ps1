@@ -18,7 +18,7 @@ function Resolve-NerdFontPackage {
         [System.Collections.IDictionary]$PackageMap
     )
 
-    $key = ($Name -replace '\s', '') -replace '(?i)(NerdFont(Mono|Propo)?|NF[MP]?)$', ''
+    $key = ConvertTo-NerdFontKey -Name $Name
     if (-not $key) { return }
     foreach ($package in $PackageMap.Values) {
         if ($package -eq $key) { return $package }
@@ -26,8 +26,11 @@ function Resolve-NerdFontPackage {
     foreach ($prefix in $PackageMap.Keys) {
         if ($prefix -eq $key) { return $PackageMap[$prefix] }
     }
-    foreach ($prefix in ($PackageMap.Keys | Sort-Object -Property Length -Descending)) {
-        if ($key.StartsWith($prefix, [System.StringComparison]::OrdinalIgnoreCase) -and $key.Substring($prefix.Length) -match '^(?i)(NL|[SML](DZ)?)$') {
+    # Nerd Fonts 3.5.1 families named after their package plus a variant suffix: JetBrainsMonoNL, MesloLGS/LGM/LGL
+    # (with or without DZ), OverpassM and OpenDyslexicM.
+    $variants = @{ JetBrainsMono = '^(?i)NL$'; MesloLG = '^(?i)[SML](DZ)?$'; Overpass = '^(?i)M$'; OpenDyslexic = '^(?i)M$' }
+    foreach ($prefix in $variants.Keys) {
+        if ($PackageMap.Contains($prefix) -and $key.StartsWith($prefix, [System.StringComparison]::OrdinalIgnoreCase) -and $key.Substring($prefix.Length) -match $variants[$prefix]) {
             return $PackageMap[$prefix]
         }
     }
