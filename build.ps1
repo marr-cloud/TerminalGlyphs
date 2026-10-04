@@ -102,6 +102,12 @@ function Invoke-ModuleBuild {
     [System.IO.File]::WriteAllText([System.IO.Path]::Combine($moduleDir, 'TerminalGlyphs.data.json'), ($data | ConvertTo-Json -Depth 10 -Compress), $utf8)
     [System.IO.File]::WriteAllText([System.IO.Path]::Combine($moduleDir, 'glyphs.json'), ($nerd.Glyphs | ConvertTo-Json -Compress), $utf8)
 
+    $fontIndex = Read-JsoncFile -Path ([System.IO.Path]::Combine($root, 'vendor', 'nerd-fonts', 'fonts.json'))
+    $packages = [System.Collections.Generic.SortedDictionary[string, string]]::new([System.StringComparer]::Ordinal)
+    foreach ($font in $fontIndex['fonts']) { $packages[$font['patchedName'].Replace(' ', '')] = $font['folderName'] }
+    $nerdFonts = [ordered]@{ version = $nerd.Version; packages = $packages }
+    [System.IO.File]::WriteAllText([System.IO.Path]::Combine($moduleDir, 'nerdfonts.json'), ($nerdFonts | ConvertTo-Json -Compress), $utf8)
+
     $psm1 = [System.Text.StringBuilder]::new()
     $sources = Get-ChildItem -LiteralPath ([System.IO.Path]::Combine($root, 'src', 'Private')), ([System.IO.Path]::Combine($root, 'src', 'Public')) -Filter '*.ps1' -ErrorAction SilentlyContinue | Sort-Object Name
     foreach ($file in $sources) { [void]$psm1.AppendLine([System.IO.File]::ReadAllText($file.FullName)) }

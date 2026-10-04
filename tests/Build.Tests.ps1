@@ -18,7 +18,7 @@ BeforeAll {
 Describe 'build output' {
     It 'contains <File>' -ForEach @(
         @{ File = 'TerminalGlyphs.psd1' }, @{ File = 'TerminalGlyphs.psm1' }, @{ File = 'TerminalGlyphs.format.ps1xml' }
-        @{ File = 'TerminalGlyphs.data.json' }, @{ File = 'glyphs.json' }
+        @{ File = 'TerminalGlyphs.data.json' }, @{ File = 'glyphs.json' }, @{ File = 'nerdfonts.json' }
     ) {
         Join-Path $moduleDir $File | Should -Exist
     }
@@ -88,6 +88,21 @@ Describe 'build output' {
     It 'imports in a clean session without errors' {
         $result = Invoke-IsolatedPwsh -Command "Import-Module '$manifestPath'; 'ERRORS=' + `$Error.Count"
         $result.Output | Should -Match 'ERRORS=0'
+    }
+
+    It 'maps Nerd Fonts file prefixes to release packages' {
+        $fonts = Get-Content -LiteralPath (Join-Path $moduleDir 'nerdfonts.json') -Raw | ConvertFrom-Json -AsHashtable
+        $fonts['version'] | Should -Be '3.5.1'
+        $fonts['packages'].Count | Should -Be 72
+        $fonts['packages']['JetBrainsMono'] | Should -BeExactly 'JetBrainsMono'
+        $fonts['packages']['CaskaydiaCove'] | Should -BeExactly 'CascadiaCode'
+        $fonts['packages']['MesloLG'] | Should -BeExactly 'Meslo'
+        $fonts['packages']['InconsolataLGC'] | Should -BeExactly 'InconsolataLGC'
+    }
+
+    It 'keeps the font index path in the module body without reading it on import' {
+        $psm1 = Get-Content -LiteralPath (Join-Path $moduleDir 'TerminalGlyphs.psm1') -Raw
+        $psm1 | Should -Match ([regex]::Escape("`$script:FontsPath = [System.IO.Path]::Combine(`$PSScriptRoot, 'nerdfonts.json')"))
     }
 }
 
