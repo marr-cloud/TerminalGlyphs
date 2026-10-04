@@ -455,10 +455,17 @@ function Invoke-DeviconsApply {
         }
     }
 
+    # A theme can already color a key that has no icon yet; that color is an existing mapping and stays.
+    $currentColors = @{}
+    foreach ($theme in 'default', 'light', 'dracula') { $currentColors[$theme] = (Read-JsoncFile -Path ([System.IO.Path]::Combine($ThemesPath, 'colors', "$theme.jsonc")))['files'] }
     foreach ($item in $Comparison.New) {
         if ($exclude.Contains($item.Key) -or $exclude.Contains("group:$($item.Group)")) { continue }
         $iconEntries[$item.Section][$item.Key] = $item.Glyph
-        & $setColor $item.Section $item.Key $item.Color @('default', 'light', 'dracula')
+        $uncolored = @(foreach ($theme in 'default', 'light', 'dracula') {
+                $map = if ($currentColors[$theme]) { $currentColors[$theme][$item.Section] }
+                if (-not (Find-ThemeKey -Map $map -Key $item.Key)) { $theme }
+            })
+        if ($uncolored.Count -gt 0) { & $setColor $item.Section $item.Key $item.Color $uncolored }
     }
     foreach ($item in $Comparison.Different) {
         if (-not $adopt.Contains($item.CurrentKey)) { continue }

@@ -279,6 +279,16 @@ Describe 'Invoke-DeviconsApply' {
         @($lines | Where-Object { $_ -match 'nvim-web-devicons' }).Count | Should -Be 1
     }
 
+    It 'keeps an existing color of a new icon entry, whatever its case' {
+        $world = New-FakeWorld 'apply-existing-color'
+        & (Join-Path $script:RepoRoot 'tools' 'Set-ThemeEntry.ps1') -Path (Join-Path $world.Themes 'colors' 'default.jsonc') -Section files.names -Entries @{ '.PRETTIERRC' = 'ABCDEF' }
+        Invoke-Apply $world $decisions | Out-Null
+        $defaultNames = (Read-Theme $world 'colors/default.jsonc')['files']['names']
+        @($defaultNames.Keys | Where-Object { $_ -eq '.prettierrc' }) | Should -BeExactly @('.PRETTIERRC')
+        $defaultNames['.PRETTIERRC'] | Should -BeExactly 'ABCDEF'
+        (Read-Theme $world 'colors/light.jsonc')['files']['names']['.prettierrc'] | Should -BeExactly (ConvertTo-LightColor -Hex '4285F4')
+    }
+
     It 'changes nothing when run again' {
         $world = New-FakeWorld 'apply-twice'
         Invoke-Apply $world $decisions | Out-Null

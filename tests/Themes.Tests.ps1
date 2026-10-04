@@ -91,3 +91,21 @@ Describe 'built-in themes' {
         }
     }
 }
+
+Describe 'theme consistency' {
+    It 'gives every file icon a color in <Theme>' -ForEach @(@{ Theme = 'default' }, @{ Theme = 'light' }, @{ Theme = 'dracula' }) {
+        $icons = Read-JsoncFile -Path (Join-Path $root 'themes' 'icons' 'default.jsonc')
+        $colors = Read-JsoncFile -Path (Join-Path $root 'themes' 'colors' "$Theme.jsonc")
+        $missing = foreach ($section in 'names', 'extensions') {
+            $colorKeys = @($colors['files'][$section].Keys)
+            foreach ($key in $icons['files'][$section].Keys) { if ($colorKeys -notcontains $key) { "files.$section[$key]" } }
+        }
+        $missing | Should -BeNullOrEmpty
+    }
+
+    It 'gives the AI tool folders a color in <Theme>' -ForEach @(@{ Theme = 'default' }, @{ Theme = 'light' }, @{ Theme = 'dracula' }) {
+        $colors = Read-JsoncFile -Path (Join-Path $root 'themes' 'colors' "$Theme.jsonc")
+        $folderKeys = @($colors['directories']['names'].Keys)
+        foreach ($folder in '.codex', '.cursor', '.gemini', '.kiro') { $folderKeys | Should -Contain $folder }
+    }
+}
