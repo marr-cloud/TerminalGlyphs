@@ -93,11 +93,14 @@ TerminalGlyphs/
 
 ### Build (`./build.ps1`)
 
-1. Lee los JSONC de `themes/` y valida que cada nombre `nf-*` exista en `vendor/nerd-fonts/glyphnames.json`
-   y que cada color sea hexadecimal `RRGGBB`. Cualquier error hace fallar el build con la lista de
-   entradas inválidas.
-2. Genera `TerminalGlyphs.data.json`: iconos resueltos a caracteres y colores convertidos a secuencias ANSI
-   de 24 bits, por tema.
+1. Lee los JSONC de `themes/` y valida que cada nombre `nf-*` exista en `vendor/nerd-fonts/glyphnames.json`,
+   que cada color sea hexadecimal `RRGGBB` y que no haya claves duplicadas sin distinguir mayúsculas.
+   Cualquier error hace fallar el build con la lista de entradas inválidas.
+2. Genera `TerminalGlyphs.data.json`: los temas de iconos (por nombre de glifo), los de color (hex
+   normalizado) y el subconjunto `glyphs` (nombre → carácter) con **todos** los glifos que usan los temas
+   integrados, de modo que el runtime nunca necesita el mapa completo para ellos. Las secuencias ANSI de
+   24 bits se generan en `Initialize-TerminalGlyph` con una caché hex → ANSI (unos cientos de colores
+   distintos), lo que mantiene una sola ruta de conversión para los temas y la config de usuario.
 3. Genera `glyphs.json` (mapa completo nombre → carácter) para resolver overrides con nombres no
    precompilados y para `Find-NerdGlyph`.
 4. Une `Public/*.ps1` y `Private/*.ps1` en un único `.psm1`.
@@ -106,7 +109,9 @@ TerminalGlyphs/
 ### Runtime
 
 - `Import-Module` define funciones y ejecuta `Update-FormatData -PrependPath` con el `format.ps1xml`. No
-  lee ni escribe ningún archivo de datos.
+  lee ni escribe ningún archivo de datos. (Se verificó que `FormatsToProcess` del manifiesto, aunque más
+  rápido, **no** tiene precedencia sobre la vista integrada de `Get-ChildItem`; `-PrependPath` sí. Coste
+  medido: ~71 ms de mediana frente a ~17 ms de un módulo sin formato.)
 - El primer `Format-TerminalGlyph` llama a `Initialize-TerminalGlyph`, que carga `TerminalGlyphs.data.json`
   y la config de usuario, construye los diccionarios de resolución y los guarda en variables `$script:`.
 - `glyphs.json` solo se carga si la config de usuario usa un nombre que no está en los datos compilados o
@@ -123,17 +128,24 @@ TerminalGlyphs/
   "files": {
     "names":      { "go.mod": "nf-dev-go", "wrangler.jsonc": "nf-dev-cloudflareworkers" },
     "extensions": { ".go": "nf-dev-go", ".tf": "nf-dev-terraform", ".d.ts": "nf-dev-typescript" },
+    "links":      { "symlink": "nf-oct-file_symlink_file", "junction": "nf-fa-external_link" },
     "default":    "nf-fa-file"
   },
   "directories": {
     "names":   { ".claude": "nf-cod-claude", ".wrangler": "nf-dev-cloudflare" },
+    "links":   { "symlink": "nf-cod-file_symlink_directory", "junction": "nf-fa-external_link" },
     "default": "nf-oct-file_directory"
-  },
-  "links": { "symlink": "nf-oct-file_symlink_file", "junction": "nf-fa-external_link" }
+  }
 }
 ```
 
+`links` va dentro de `files` y de `directories` porque el upstream usa iconos distintos para un enlace a
+archivo y un enlace a directorio. Las claves de sección (`files`, `names`, `links`…) distinguen mayúsculas;
+las claves de archivo, carpeta y extensión no. Por eso el build rechaza dos claves de la misma sección que
+solo difieran en mayúsculas (`justfile`/`Justfile`).
+
 Los temas de color tienen la misma forma, con valores hexadecimales `RRGGBB` en lugar de nombres de glifo.
+`default` es opcional en los temas de color: sin él, el elemento se muestra sin color.
 
 ### Config de usuario (opcional)
 
@@ -145,7 +157,7 @@ si no, `~/.config/terminalglyphs/config.jsonc`.
   "$schema": "https://raw.githubusercontent.com/marr-cloud/TerminalGlyphs/main/schema/config.schema.json",
   "iconTheme":  "default",
   "colorTheme": "default",
-  "icons":  { "files": { "names": { "Justfile": "nf-md-format_list_checks" } } },
+  "icons":  { "files": { "names": { "justfile": "nf-md-format_list_checks" } } },
   "colors": { "files": { "extensions": { ".go": "00ADD8" } } }
 }
 ```
@@ -165,8 +177,9 @@ Para cada `FileSystemInfo`, la primera regla que acierta gana:
 Todos los diccionarios usan `StringComparer.OrdinalIgnoreCase`. Icono y color se resuelven con las mismas
 reglas pero de forma independiente.
 
-`Get-TerminalGlyph <ruta>` devuelve un objeto con `Name`, `Icon`, `IconName`, `Color`, `Rule` (p. ej.
-`files.names[go.mod]`) y `Source` (`theme:default` o `user-config`).
+`Get-TerminalGlyph <ruta>` devuelve un objeto con `Name`, `Icon`, `IconName`, `Color` (hex `RRGGBB`, no la
+secuencia ANSI, para que la salida sea legible), `Rule` (p. ej. `files.names[go.mod]`) y `Source`
+(`theme:default` o `user-config`).
 
 ## 6. Iconos nuevos
 
@@ -198,7 +211,7 @@ indica que Nerd Fonts no tiene logo oficial y se usa una aproximación. Todos lo
 | Biome | F `biome.json`, `biome.jsonc` | `nf-dev-biome` |
 | Deno | F `deno.json`, `deno.jsonc` | `nf-dev-denojs` |
 | TOML | E `.toml` | `nf-custom-toml` |
-| just | F `justfile`, `Justfile`, `.justfile` | `nf-md-format_list_checks` ≈ |
+| just | F `justfile`, `.justfile` (cubre también `Justfile`, la resolución no distingue mayúsculas) | `nf-md-format_list_checks` ≈ |
 
 Hono no tiene un archivo de firma propio, así que no recibe mapeo.
 
@@ -216,6 +229,9 @@ verificados en v3.5.1):
 | D `onedrive` | `nf-dev-onedrive` | `nf-md-microsoft_onedrive` |
 | E `.clixml` | `nf-dev-code_badge` | `nf-md-xml` |
 | E `.tf`, `.tfvars`, `.tf.json`, `.tfvars.json`, `.auto.tfvars`, `.auto.tfvars.json` | `nf-dev-code_badge` | `nf-dev-terraform` |
+
+Además, el upstream declara `rakefile` como extensión (sin punto), un mapeo que nunca coincide. La migración
+mueve toda clave de extensión sin punto inicial a `files.names`.
 
 ## 7. Manejo de errores
 
