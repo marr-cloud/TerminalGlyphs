@@ -55,13 +55,14 @@ JetBrainsMono/FiraCode en 3.5.1, enumeración sin errores).
 Install-TerminalGlyphSetup [-Family <string[]>] [-SkipFont] [-SkipProfile] [-WhatIf] [-Confirm]
 ```
 
-- `-Family` (por defecto `JetBrainsMono`): familias a instalar si no hay ninguna Nerd Font. Las ya instaladas y
-  desactualizadas se actualizan siempre (salvo `-SkipFont`).
+- `-Family`: familias a instalar. Si se pasa explícitamente, se instalan (o actualizan) siempre esas familias. Si se
+  omite, se instala `JetBrainsMono` solo cuando no hay ninguna Nerd Font. En ambos casos, las ya instaladas y
+  desactualizadas se actualizan (salvo `-SkipFont`).
 - `SupportsShouldProcess`: todo cambio pasa por `ShouldProcess`; `-WhatIf` no modifica nada salvo su propia carpeta
   temporal, que se borra siempre.
 - Pasos independientes (un fallo no bloquea a los demás). Al final, un resumen por paso con estado
   `OK` | `Sin cambios` | `Omitido` | `Error: <motivo>`, la fuente a elegir en la terminal y, si quedaron fuentes en
-  uso reemplazadas en Windows, el aviso de **reiniciar sesión de Windows**.
+  uso reemplazadas en Windows, el aviso de **reiniciar Windows** (cerrar sesión no basta: la limpieza depende de `LastBootUpTime`).
 - Nunca se ejecuta al importar: el import sigue sin leer datos ni escribir nada.
 - La API pública pasa de 5 a 6 comandos.
 
@@ -80,8 +81,9 @@ Install-TerminalGlyphSetup [-Family <string[]>] [-SkipFont] [-SkipProfile] [-Wha
 
 - `https://github.com/ryanoasis/nerd-fonts/releases/download/v3.5.1/<Paquete>.tar.xz` y `SHA-256.txt` del mismo
   release. Hash distinto → error de ese paso, sin instalar nada.
-- Extracción con el `tar` del sistema (en Windows `$env:SystemRoot\System32\tar.exe`) en una carpeta temporal que se
-  borra siempre (`-WhatIf:$false` en la limpieza).
+- Extracción con el `tar` del sistema (en Windows `$env:SystemRoot\System32\tar.exe`, bsdtar con liblzma: verificado
+  bsdtar 3.8.8 / liblzma 5.8.1 en Windows 11) en una carpeta temporal que se borra siempre (`-WhatIf:$false` en la
+  limpieza).
 - La red queda detrás de una función privada para poder sustituirla en los tests.
 
 ### Windows (por usuario, sin admin)
@@ -94,7 +96,7 @@ Install-TerminalGlyphSetup [-Family <string[]>] [-SkipFont] [-SkipProfile] [-Wha
   (mismo nombre de archivo).
 - **Limpieza:** borrar un `.old-nerdfont` solo si el último arranque (`Win32_OperatingSystem.LastBootUpTime`) es
   posterior a su marca de tiempo; si su original falta, restaurarlo. Si quedan pendientes, el resumen pide reiniciar
-  sesión.
+  Windows.
 
 ### Linux
 
@@ -150,7 +152,7 @@ Pester 5.9.x, TDD, sin red ni efectos en la máquina real:
 ## 8. Publicación y documentación
 
 - Versión `0.2.0`: `CHANGELOG.md` con su sección, manifiesto con 6 funciones, spec 0.1 actualizada en lo que cambia.
-- README: instalación de dos líneas desde la Gallery, reinicio de sesión de Windows si se actualizaron fuentes en uso;
+- README: instalación de dos líneas desde la Gallery, reinicio de Windows si se actualizaron fuentes en uso;
   "desde el código fuente" pasa a la sección de desarrollo.
 - Gallery: el usuario crea la API key (powershellgallery.com → Account → API Keys; glob `TerminalGlyphs`, scope "Push
   new packages and package versions", ≤ 365 días) y la guarda con `! gh secret set PSGALLERY_API_KEY --repo
