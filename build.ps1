@@ -93,10 +93,21 @@ function Invoke-ModuleBuild {
         foreach ($entry in (Get-GlyphThemeEntry -Theme $theme)) { $used[$entry.Value] = $nerd.Glyphs[$entry.Value] }
     }
 
-    # Remove every earlier version, so out/ never holds stale module folders.
+    # Remove every earlier version, so out/ never holds stale module folders. Only folders named like a version are
+    # removed, and a source checkout is refused, so a mistaken -OutputPath cannot delete anything else.
     $moduleRoot = [System.IO.Path]::GetFullPath([System.IO.Path]::Combine($OutputPath, 'TerminalGlyphs'))
+    foreach ($marker in 'build.ps1', '.git') {
+        if (Test-Path -LiteralPath ([System.IO.Path]::Combine($moduleRoot, $marker))) {
+            throw "Refusing to build into $moduleRoot because it is a TerminalGlyphs source folder. Use an -OutputPath outside the repository (default: out)."
+        }
+    }
     $moduleDir = [System.IO.Path]::Combine($moduleRoot, $manifest.ModuleVersion)
-    if (Test-Path -LiteralPath $moduleRoot) { Remove-Item -LiteralPath $moduleRoot -Recurse -Force }
+    if ([System.IO.Directory]::Exists($moduleRoot)) {
+        foreach ($folder in [System.IO.Directory]::GetDirectories($moduleRoot)) {
+            $parsed = $null
+            if ([version]::TryParse([System.IO.Path]::GetFileName($folder), [ref]$parsed)) { Remove-Item -LiteralPath $folder -Recurse -Force }
+        }
+    }
     [System.IO.Directory]::CreateDirectory($moduleDir) | Out-Null
     $utf8 = [System.Text.UTF8Encoding]::new($false)
 
