@@ -42,6 +42,21 @@ Describe 'documentation' {
         $changelog | Should -Match 'keepachangelog\.com'
         $changelog | Should -Match '## \[Unreleased\]'
     }
+
+    It 'documents an install that can be repeated without nesting folders' {
+        $readme = Get-RepoText 'README.md'
+        $readme | Should -Match ([regex]::Escape('Copy-Item -Recurse -Force -Path ./out/TerminalGlyphs/* -Destination $target'))
+        $modules = Join-Path $TestDrive 'Modules'
+        $target = Join-Path $modules 'TerminalGlyphs'
+        $source = Join-Path $script:RepoRoot 'out' 'TerminalGlyphs' '*'
+        foreach ($attempt in 1..2) {
+            New-Item -ItemType Directory -Force -Path $target | Out-Null
+            Copy-Item -Recurse -Force -Path $source -Destination $target
+        }
+        $manifests = @(Get-ChildItem -LiteralPath $modules -Recurse -Filter 'TerminalGlyphs.psd1')
+        $manifests.Count | Should -Be 1
+        $manifests[0].FullName | Should -Be (Join-Path $target '0.1.0' 'TerminalGlyphs.psd1')
+    }
 }
 
 Describe 'workflows' {

@@ -26,8 +26,9 @@ been maintained since 2023. It keeps the Terminal-Icons mappings and colors and 
 git clone https://github.com/marr-cloud/TerminalGlyphs.git
 cd TerminalGlyphs
 ./build.ps1
-$modules = ($env:PSModulePath -split [IO.Path]::PathSeparator)[0]
-Copy-Item -Recurse -Force ./out/TerminalGlyphs (Join-Path $modules 'TerminalGlyphs')
+$target = Join-Path ($env:PSModulePath -split [IO.Path]::PathSeparator)[0] 'TerminalGlyphs'
+New-Item -ItemType Directory -Force -Path $target | Out-Null
+Copy-Item -Recurse -Force -Path ./out/TerminalGlyphs/* -Destination $target
 ```
 
 Then, in your profile, replace `Import-Module Terminal-Icons` with:
