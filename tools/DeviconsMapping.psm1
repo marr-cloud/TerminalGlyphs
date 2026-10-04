@@ -179,7 +179,8 @@ function ConvertFrom-Hsl {
 }
 
 function ConvertTo-LightColor {
-    # The same color for the light theme, darkened (same hue and saturation) until it has 3:1 contrast on white.
+    # The same color for the light theme, darkened (same hue and chroma) until it has 3:1 contrast on white.
+    # HSL saturation is not kept: almost white colors have a high saturation and would turn vivid when darkened.
     [OutputType([string])]
     [CmdletBinding()]
     param(
@@ -190,16 +191,20 @@ function ConvertTo-LightColor {
     $value = $Hex.TrimStart('#').ToUpperInvariant()
     if ((Get-ContrastWithWhite -Hex $value) -ge 3) { return $value }
     $hue, $saturation, $lightness = ConvertTo-Hsl -Hex $value
+    $chroma = (1 - [Math]::Abs(2 * $lightness - 1)) * $saturation
     while ($lightness -gt 0) {
         $lightness = [Math]::Max(0.0, $lightness - 0.01)
-        $candidate = ConvertFrom-Hsl -Hue $hue -Saturation $saturation -Lightness $lightness
+        $room = 1 - [Math]::Abs(2 * $lightness - 1)
+        $candidateSaturation = if ($room -gt 0) { [Math]::Min(1.0, $chroma / $room) } else { 0.0 }
+        $candidate = ConvertFrom-Hsl -Hue $hue -Saturation $candidateSaturation -Lightness $lightness
         if ((Get-ContrastWithWhite -Hex $candidate) -ge 3) { return $candidate }
     }
     '000000'
 }
 
 function ConvertTo-DraculaColor {
-    # The closest Dracula palette color by hue; greys go to the Dracula foreground or comment color.
+    # The closest Dracula palette color by hue; greys go to the Dracula foreground or comment color. Grey means a low
+    # HSV saturation: HSL saturation is high for almost white colors with a tint, which would turn vivid.
     [OutputType([string])]
     [CmdletBinding()]
     param(
@@ -208,7 +213,10 @@ function ConvertTo-DraculaColor {
     )
 
     $hue, $saturation, $lightness = ConvertTo-Hsl -Hex $Hex
-    if ($saturation -lt 0.15) { if ($lightness -ge 0.5) { return 'F8F8F2' } else { return '6272A4' } }
+    $chroma = (1 - [Math]::Abs(2 * $lightness - 1)) * $saturation
+    $brightness = $lightness + $chroma / 2
+    $hsvSaturation = if ($brightness -gt 0) { $chroma / $brightness } else { 0.0 }
+    if ($hsvSaturation -lt 0.2) { if ($lightness -ge 0.5) { return 'F8F8F2' } else { return '6272A4' } }
     $best = $null
     $bestDistance = 361.0
     foreach ($candidate in $script:DraculaPalette) {

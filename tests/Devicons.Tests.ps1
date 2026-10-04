@@ -138,6 +138,13 @@ Describe 'ConvertTo-LightColor' {
     It 'accepts a leading # and lower case' {
         ConvertTo-LightColor -Hex '#1354bf' | Should -BeExactly '1354BF'
     }
+
+    It 'keeps <Hex>, an almost white color, almost grey when darkening it' -ForEach @(@{ Hex = 'FFF2F2' }, @{ Hex = 'FFF3D7' }, @{ Hex = 'FFFFCD' }) {
+        $light = ConvertTo-LightColor -Hex $Hex
+        Get-ContrastWithWhite -Hex $light | Should -BeGreaterOrEqual 3
+        $channels = foreach ($offset in 0, 2, 4) { [Convert]::ToInt32($light.Substring($offset, 2), 16) }
+        ($channels | Measure-Object -Maximum -Minimum | ForEach-Object { $_.Maximum - $_.Minimum }) | Should -BeLessOrEqual 51
+    }
 }
 
 Describe 'ConvertTo-DraculaColor' {
@@ -149,6 +156,12 @@ Describe 'ConvertTo-DraculaColor' {
         @{ Hex = '6D8086'; Expected = '6272A4' }
         @{ Hex = 'FFFFFF'; Expected = 'F8F8F2' }
         @{ Hex = '000000'; Expected = '6272A4' }
+        @{ Hex = 'FFF2F2'; Expected = 'F8F8F2' }
+        @{ Hex = 'FFF3D7'; Expected = 'F8F8F2' }
+        @{ Hex = 'FFFFCD'; Expected = 'F8F8F2' }
+        @{ Hex = 'FFAFAF'; Expected = 'FF5555' }
+        @{ Hex = '839463'; Expected = 'F1FA8C' }
+        @{ Hex = '77AA99'; Expected = '50FA7B' }
     ) {
         ConvertTo-DraculaColor -Hex $Hex | Should -BeExactly $Expected
     }
