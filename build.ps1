@@ -93,14 +93,22 @@ function Invoke-ModuleBuild {
         foreach ($entry in (Get-GlyphThemeEntry -Theme $theme)) { $used[$entry.Value] = $nerd.Glyphs[$entry.Value] }
     }
 
-    $moduleDir = [System.IO.Path]::GetFullPath([System.IO.Path]::Combine($OutputPath, 'TerminalGlyphs', $manifest.ModuleVersion))
-    if (Test-Path -LiteralPath $moduleDir) { Remove-Item -LiteralPath $moduleDir -Recurse -Force }
+    # Remove every earlier version, so out/ never holds stale module folders.
+    $moduleRoot = [System.IO.Path]::GetFullPath([System.IO.Path]::Combine($OutputPath, 'TerminalGlyphs'))
+    $moduleDir = [System.IO.Path]::Combine($moduleRoot, $manifest.ModuleVersion)
+    if (Test-Path -LiteralPath $moduleRoot) { Remove-Item -LiteralPath $moduleRoot -Recurse -Force }
     [System.IO.Directory]::CreateDirectory($moduleDir) | Out-Null
     $utf8 = [System.Text.UTF8Encoding]::new($false)
 
     $data = [ordered]@{ nerdFontsVersion = $nerd.Version; glyphs = $used; iconThemes = $iconThemes; colorThemes = $colorThemes }
     [System.IO.File]::WriteAllText([System.IO.Path]::Combine($moduleDir, 'TerminalGlyphs.data.json'), ($data | ConvertTo-Json -Depth 10 -Compress), $utf8)
     [System.IO.File]::WriteAllText([System.IO.Path]::Combine($moduleDir, 'glyphs.json'), ($nerd.Glyphs | ConvertTo-Json -Compress), $utf8)
+
+    $fontIndex = Read-JsoncFile -Path ([System.IO.Path]::Combine($root, 'vendor', 'nerd-fonts', 'fonts.json'))
+    $packages = [System.Collections.Generic.SortedDictionary[string, string]]::new([System.StringComparer]::Ordinal)
+    foreach ($font in $fontIndex['fonts']) { $packages[$font['patchedName'].Replace(' ', '')] = $font['folderName'] }
+    $nerdFonts = [ordered]@{ version = $nerd.Version; packages = $packages }
+    [System.IO.File]::WriteAllText([System.IO.Path]::Combine($moduleDir, 'nerdfonts.json'), ($nerdFonts | ConvertTo-Json -Compress), $utf8)
 
     $psm1 = [System.Text.StringBuilder]::new()
     $sources = Get-ChildItem -LiteralPath ([System.IO.Path]::Combine($root, 'src', 'Private')), ([System.IO.Path]::Combine($root, 'src', 'Public')) -Filter '*.ps1' -ErrorAction SilentlyContinue | Sort-Object Name

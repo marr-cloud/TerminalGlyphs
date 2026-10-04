@@ -1,6 +1,7 @@
 BeforeAll {
     . (Join-Path $PSScriptRoot 'TestHelpers.ps1')
     $buildScript = Join-Path $script:RepoRoot 'build.ps1'
+    $moduleVersion = (Import-PowerShellDataFile -Path (Join-Path $script:RepoRoot 'src' 'TerminalGlyphs.psd1')).ModuleVersion
     $manifestPath = Get-BuiltManifestPath
     $moduleDir = Split-Path -Parent $manifestPath
     $data = Get-Content -LiteralPath (Join-Path $moduleDir 'TerminalGlyphs.data.json') -Raw | ConvertFrom-Json -AsHashtable
@@ -18,7 +19,7 @@ BeforeAll {
 Describe 'build output' {
     It 'contains <File>' -ForEach @(
         @{ File = 'TerminalGlyphs.psd1' }, @{ File = 'TerminalGlyphs.psm1' }, @{ File = 'TerminalGlyphs.format.ps1xml' }
-        @{ File = 'TerminalGlyphs.data.json' }, @{ File = 'glyphs.json' }
+        @{ File = 'TerminalGlyphs.data.json' }, @{ File = 'glyphs.json' }, @{ File = 'nerdfonts.json' }
     ) {
         Join-Path $moduleDir $File | Should -Exist
     }
@@ -89,6 +90,33 @@ Describe 'build output' {
         $result = Invoke-IsolatedPwsh -Command "Import-Module '$manifestPath'; 'ERRORS=' + `$Error.Count"
         $result.Output | Should -Match 'ERRORS=0'
     }
+
+    It 'maps Nerd Fonts file prefixes to release packages' {
+        $fonts = Get-Content -LiteralPath (Join-Path $moduleDir 'nerdfonts.json') -Raw | ConvertFrom-Json -AsHashtable
+        $fonts['version'] | Should -Be '3.5.1'
+        $fonts['packages'].Count | Should -Be 72
+        $fonts['packages']['JetBrainsMono'] | Should -BeExactly 'JetBrainsMono'
+        $fonts['packages']['CaskaydiaCove'] | Should -BeExactly 'CascadiaCode'
+        $fonts['packages']['MesloLG'] | Should -BeExactly 'Meslo'
+        $fonts['packages']['InconsolataLGC'] | Should -BeExactly 'InconsolataLGC'
+    }
+
+    It 'keeps the font index path in the module body without reading it on import' {
+        $psm1 = Get-Content -LiteralPath (Join-Path $moduleDir 'TerminalGlyphs.psm1') -Raw
+        $psm1 | Should -Match ([regex]::Escape("`$script:FontsPath = [System.IO.Path]::Combine(`$PSScriptRoot, 'nerdfonts.json')"))
+    }
+}
+
+Describe 'build cleanup' {
+    It 'removes module versions left by earlier builds' {
+        $out = Join-Path $TestDrive 'stale-out'
+        $stale = Join-Path $out 'TerminalGlyphs' '0.0.1'
+        [System.IO.Directory]::CreateDirectory($stale) | Out-Null
+        [System.IO.File]::WriteAllText((Join-Path $stale 'TerminalGlyphs.psd1'), '@{}')
+        & $buildScript -OutputPath $out *> $null
+        $stale | Should -Not -Exist
+        Join-Path $out 'TerminalGlyphs' $moduleVersion 'TerminalGlyphs.psd1' | Should -Exist
+    }
 }
 
 Describe 'build validation' {
@@ -96,7 +124,7 @@ Describe 'build validation' {
         $themes = New-ThemeFixture '{ "name": "default", "files": { "names": { "go.mod": "nf-dev-go" } } }' '{ "name": "default", "files": { "extensions": { ".go": "#00add8" } } }'
         $out = Join-Path $TestDrive 'ok'
         & $buildScript -ThemesPath $themes -OutputPath $out *> $null
-        $built = Get-Content -LiteralPath (Join-Path $out 'TerminalGlyphs' '0.1.0' 'TerminalGlyphs.data.json') -Raw | ConvertFrom-Json -AsHashtable
+        $built = Get-Content -LiteralPath (Join-Path $out 'TerminalGlyphs' $moduleVersion 'TerminalGlyphs.data.json') -Raw | ConvertFrom-Json -AsHashtable
         $built['colorThemes']['default']['files']['extensions']['.go'] | Should -BeExactly '00ADD8'
     }
 

@@ -37,6 +37,18 @@ Describe 'documentation' {
         $readme | Should -Match 'TERMINALGLYPHS_CONFIG'
     }
 
+    It 'README documents the two-line install from the Gallery' {
+        $readme = Get-RepoText 'README.md'
+        $readme | Should -Match ([regex]::Escape('Install-PSResource TerminalGlyphs'))
+        $readme | Should -Match ([regex]::Escape('Import-Module TerminalGlyphs; Install-TerminalGlyphSetup'))
+        $readme | Should -Match 'Restart Windows'
+        $readme | Should -Not -Match 'Install-NerdFont\.ps1'
+    }
+
+    It 'no longer ships the old font script' {
+        Join-Path $script:RepoRoot 'tools' 'Install-NerdFont.ps1' | Should -Not -Exist
+    }
+
     It 'CHANGELOG follows Keep a Changelog' {
         $changelog = Get-RepoText 'CHANGELOG.md'
         $changelog | Should -Match 'keepachangelog\.com'
@@ -55,7 +67,7 @@ Describe 'documentation' {
         }
         $manifests = @(Get-ChildItem -LiteralPath $modules -Recurse -Filter 'TerminalGlyphs.psd1')
         $manifests.Count | Should -Be 1
-        $manifests[0].FullName | Should -Be (Join-Path $target '0.1.0' 'TerminalGlyphs.psd1')
+        $manifests[0].FullName | Should -Be (Join-Path $target (Import-PowerShellDataFile -Path (Join-Path $script:RepoRoot 'src' 'TerminalGlyphs.psd1')).ModuleVersion 'TerminalGlyphs.psd1')
     }
 }
 
@@ -66,11 +78,19 @@ Describe 'workflows' {
         }
     }
 
-    It 'CI runs on Windows and Linux' {
+    It 'CI runs on Windows, Linux and macOS and rehearses publishing' {
         $ci = Get-RepoText '.github/workflows/ci.yml'
         $ci | Should -Match 'windows-latest'
         $ci | Should -Match 'ubuntu-latest'
+        $ci | Should -Match 'macos-latest'
         $ci | Should -Match ([regex]::Escape('./build.ps1 -Task Test'))
+        $ci | Should -Match ([regex]::Escape('./tools/Test-Publish.ps1'))
+    }
+
+    It 'rehearses publishing before publishing' {
+        $publish = Get-RepoText '.github/workflows/publish.yml'
+        $publish.IndexOf('./tools/Test-Publish.ps1') | Should -BeGreaterThan 0
+        $publish.IndexOf('./tools/Test-Publish.ps1') | Should -BeLessThan $publish.IndexOf('Publish-PSResource -Path')
     }
 
     It 'publishing only runs manually' {

@@ -16,6 +16,12 @@ Describe 'vendored Nerd Fonts data' {
         $raw['METADATA']['version'] | Should -Be '3.5.1'
         ($raw.Keys | Where-Object { $_ -ne 'METADATA' }).Count | Should -Be 10995
     }
+
+    It 'includes the font index of the same release' {
+        $path = Join-Path $root 'vendor' 'nerd-fonts' 'fonts.json'
+        (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash | Should -Be '893E03F5FB079036AE19A05B30985C40603909F5C663919DA0760DF86FEEEFD6'
+        (Read-JsoncFile -Path $path)['fonts'].Count | Should -Be 72
+    }
 }
 
 Describe 'ConvertTo-AnsiSequence' {

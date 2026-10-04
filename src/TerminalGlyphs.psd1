@@ -1,6 +1,6 @@
 @{
     RootModule           = 'TerminalGlyphs.psm1'
-    ModuleVersion        = '0.1.0'
+    ModuleVersion        = '0.2.0'
     CompatiblePSEditions = @('Core')
     GUID                 = '191db48e-7499-4eff-8584-fb8c62a2ddee'
     Author               = 'marr-cloud'
@@ -8,7 +8,7 @@
     Copyright            = '(c) 2026 marr-cloud. MIT License.'
     Description          = 'Nerd Font icons and colors for files and folders in Get-ChildItem. A reimplementation of Terminal-Icons that never writes to disk on import.'
     PowerShellVersion    = '7.4'
-    FunctionsToExport    = @('Format-TerminalGlyph', 'Get-TerminalGlyph', 'Show-TerminalGlyphTheme', 'Find-NerdGlyph', 'Update-TerminalGlyphConfig')
+    FunctionsToExport    = @('Format-TerminalGlyph', 'Get-TerminalGlyph', 'Show-TerminalGlyphTheme', 'Find-NerdGlyph', 'Update-TerminalGlyphConfig', 'Install-TerminalGlyphSetup')
     CmdletsToExport      = @()
     VariablesToExport    = @()
     AliasesToExport      = @()

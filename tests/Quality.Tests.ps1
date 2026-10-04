@@ -1,5 +1,5 @@
 BeforeDiscovery {
-    $publicFunctions = @('Format-TerminalGlyph', 'Get-TerminalGlyph', 'Show-TerminalGlyphTheme', 'Find-NerdGlyph', 'Update-TerminalGlyphConfig') |
+    $publicFunctions = @('Format-TerminalGlyph', 'Get-TerminalGlyph', 'Show-TerminalGlyphTheme', 'Find-NerdGlyph', 'Update-TerminalGlyphConfig', 'Install-TerminalGlyphSetup') |
         ForEach-Object { @{ Name = $_ } }
 }
 
@@ -18,12 +18,12 @@ Describe 'module manifest' {
         $manifest = Test-ModuleManifest -Path $manifestPath
         $manifest.PowerShellVersion | Should -Be ([version]'7.4')
         $manifest.CompatiblePSEditions | Should -Be @('Core')
-        $manifest.Version | Should -Be ([version]'0.1.0')
+        $manifest.Version | Should -Be ([version]'0.2.0')
         $manifest.Guid | Should -Be ([guid]'191db48e-7499-4eff-8584-fb8c62a2ddee')
     }
 
     It 'exports exactly the public API' {
-        @($module.ExportedFunctions.Keys | Sort-Object) | Should -Be @('Find-NerdGlyph', 'Format-TerminalGlyph', 'Get-TerminalGlyph', 'Show-TerminalGlyphTheme', 'Update-TerminalGlyphConfig')
+        @($module.ExportedFunctions.Keys | Sort-Object) | Should -Be @('Find-NerdGlyph', 'Format-TerminalGlyph', 'Get-TerminalGlyph', 'Install-TerminalGlyphSetup', 'Show-TerminalGlyphTheme', 'Update-TerminalGlyphConfig')
         $module.ExportedCmdlets.Count | Should -Be 0
         $module.ExportedAliases.Count | Should -Be 0
     }

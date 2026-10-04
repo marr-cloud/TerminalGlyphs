@@ -2,6 +2,7 @@
 # Importing must stay cheap and must never read data files or write anything to disk.
 $script:DataPath = [System.IO.Path]::Combine($PSScriptRoot, 'TerminalGlyphs.data.json')
 $script:GlyphsPath = [System.IO.Path]::Combine($PSScriptRoot, 'glyphs.json')
+$script:FontsPath = [System.IO.Path]::Combine($PSScriptRoot, 'nerdfonts.json')
 $script:TGState = $null
 $script:FullGlyphs = $null
 $script:Warned = [System.Collections.Generic.HashSet[string]]::new()
