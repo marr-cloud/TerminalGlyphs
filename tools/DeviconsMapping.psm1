@@ -219,4 +219,182 @@ function ConvertTo-DraculaColor {
     $best
 }
 
-Export-ModuleMember -Function Confirm-DeviconsData, Read-DeviconsFile, Get-NerdGlyphIndex, Select-GlyphName, Get-ContrastWithWhite, ConvertTo-Hsl, ConvertTo-LightColor, ConvertTo-DraculaColor
+function Find-ThemeKey {
+    # The key as written in a theme section that equals -Key without case, or nothing.
+    [OutputType([string])]
+    [CmdletBinding()]
+    param(
+        [System.Collections.IDictionary]$Map,
+
+        [Parameter(Mandatory)]
+        [string]$Key
+    )
+
+    if ($null -eq $Map) { return }
+    $Map.Keys | Where-Object { $_ -eq $Key } | Select-Object -First 1
+}
+
+function Get-DeviconsComparison {
+    # Compares the reference with the themes: new entries, other glyphs, unnamed glyphs and icons without a color.
+    [OutputType([pscustomobject])]
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string]$VendorPath,
+
+        [Parameter(Mandatory)]
+        [string]$GlyphNamesPath,
+
+        [Parameter(Mandatory)]
+        [string]$ThemesPath
+    )
+
+    $commit = Confirm-DeviconsData -VendorPath $VendorPath
+    $index = Get-NerdGlyphIndex -GlyphNamesPath $GlyphNamesPath
+    $codeOf = @{}
+    foreach ($code in $index.Keys) { foreach ($name in $index[$code]) { $codeOf[$name] = $code } }
+    $icons = Read-JsoncFile -Path ([System.IO.Path]::Combine($ThemesPath, 'icons', 'default.jsonc'))
+    $colors = [ordered]@{}
+    foreach ($theme in 'default', 'light', 'dracula') { $colors[$theme] = Read-JsoncFile -Path ([System.IO.Path]::Combine($ThemesPath, 'colors', "$theme.jsonc")) }
+
+    $used = [System.Collections.Generic.HashSet[string]]::new()
+    foreach ($kind in 'files', 'directories') {
+        if ($null -eq $icons[$kind]) { continue }
+        foreach ($value in $icons[$kind].Values) {
+            if ($value -is [System.Collections.IDictionary]) { foreach ($name in $value.Values) { [void]$used.Add([string]$name) } }
+            elseif ($value -is [string]) { [void]$used.Add($value) }
+        }
+    }
+
+    $result = [pscustomobject]@{
+        Commit       = $commit
+        New          = [System.Collections.Generic.List[object]]::new()
+        Different    = [System.Collections.Generic.List[object]]::new()
+        Unmapped     = [System.Collections.Generic.List[object]]::new()
+        MissingColor = [System.Collections.Generic.List[object]]::new()
+        MissingFolderColor = [System.Collections.Generic.List[object]]::new()
+    }
+    $reference = @{}
+    foreach ($source in @(@{ File = 'icons_by_filename.lua'; Section = 'names'; Extension = $false }, @{ File = 'icons_by_file_extension.lua'; Section = 'extensions'; Extension = $true })) {
+        $reference[$source.Section] = [System.Collections.Generic.Dictionary[string, object]]::new([System.StringComparer]::OrdinalIgnoreCase)
+        $map = $icons['files'][$source.Section]
+        $colorMap = $colors['default']['files'][$source.Section]
+        foreach ($entry in (Read-DeviconsFile -Path ([System.IO.Path]::Combine($VendorPath, $source.File)) -Extension:$source.Extension)) {
+            $reference[$source.Section][$entry.Key] = $entry
+            $codePoint = [char]::ConvertToUtf32($entry.Icon, 0)
+            $glyph = Select-GlyphName -CodePoint $codePoint -GlyphIndex $index -UsedName $used
+            if (-not $glyph) {
+                $result.Unmapped.Add([pscustomobject]@{ Section = $source.Section; Key = $entry.Key; Group = $entry.Group; CodePoint = ('U+{0:X4}' -f $codePoint) })
+                continue
+            }
+            $currentKey = Find-ThemeKey -Map $map -Key $entry.Key
+            $item = [pscustomobject]@{
+                Section      = $source.Section
+                Key          = $entry.Key
+                Group        = $entry.Group
+                Glyph        = $glyph
+                Color        = $entry.Color
+                CurrentKey   = $currentKey
+                CurrentGlyph = if ($currentKey) { $map[$currentKey] } else { $null }
+                CurrentColor = $null
+            }
+            if ($currentKey) {
+                $colorKey = Find-ThemeKey -Map $colorMap -Key $currentKey
+                if ($colorKey) { $item.CurrentColor = $colorMap[$colorKey] }
+            }
+            if (-not $currentKey) { $result.New.Add($item) }
+            elseif ($codeOf[[string]$item.CurrentGlyph] -ne $codePoint) { $result.Different.Add($item) }
+        }
+    }
+
+    foreach ($section in 'names', 'extensions') {
+        $map = $icons['files'][$section]
+        if ($null -eq $map) { continue }
+        foreach ($key in $map.Keys) {
+            $missing = @(foreach ($theme in $colors.Keys) { if (-not (Find-ThemeKey -Map $colors[$theme]['files'][$section] -Key $key)) { $theme } })
+            if ($missing.Count -eq 0) { continue }
+            $referenceColor = if ($reference[$section].ContainsKey($key)) { $reference[$section][$key].Color } else { $null }
+            $result.MissingColor.Add([pscustomobject]@{ Section = $section; Key = $key; MissingIn = [string[]]$missing; ReferenceColor = $referenceColor })
+        }
+    }
+    # Folders are not in the reference: they are only reported.
+    if ($icons['directories'] -and $icons['directories']['names']) {
+        foreach ($key in $icons['directories']['names'].Keys) {
+            $missing = @(foreach ($theme in $colors.Keys) { if (-not $colors[$theme]['directories'] -or -not (Find-ThemeKey -Map $colors[$theme]['directories']['names'] -Key $key)) { $theme } })
+            if ($missing.Count -gt 0) { $result.MissingFolderColor.Add([pscustomobject]@{ Key = $key; MissingIn = [string[]]$missing }) }
+        }
+    }
+    $result
+}
+
+function Write-DeviconsReport {
+    # Writes the comparison as Markdown, grouping new entries by the reference's name for each entry.
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [pscustomobject]$Comparison,
+
+        [Parameter(Mandatory)]
+        [string]$Path
+    )
+
+    $cell = { param($Value) ([string]$Value).Replace('|', '\|') }
+    $lines = [System.Collections.Generic.List[string]]::new()
+    $lines.Add('# nvim-web-devicons mappings report')
+    $lines.Add('')
+    $lines.Add("Reference: https://github.com/nvim-tree/nvim-web-devicons commit $($Comparison.Commit)")
+    $lines.Add('')
+    $lines.Add('| | Count |')
+    $lines.Add('|---|---|')
+    $lines.Add("| New file names | $(@($Comparison.New | Where-Object Section -EQ 'names').Count) |")
+    $lines.Add("| New extensions | $(@($Comparison.New | Where-Object Section -EQ 'extensions').Count) |")
+    $lines.Add("| Existing entries with another glyph | $($Comparison.Different.Count) |")
+    $lines.Add("| Glyphs without a Nerd Fonts 3.5.1 name | $($Comparison.Unmapped.Count) |")
+    $lines.Add("| Icons without a color in some theme | $($Comparison.MissingColor.Count) |")
+    $lines.Add('')
+    $lines.Add('## New entries')
+    foreach ($group in ($Comparison.New | Group-Object -Property Group | Sort-Object -Property Name)) {
+        $lines.Add('')
+        $lines.Add("### $($group.Name)")
+        $lines.Add('')
+        $lines.Add('| Section | Key | Glyph | Color |')
+        $lines.Add('|---|---|---|---|')
+        foreach ($item in ($group.Group | Sort-Object -Property Section, Key)) {
+            $lines.Add(('| {0} | {1} | {2} | {3} |' -f $item.Section, (& $cell $item.Key), $item.Glyph, $item.Color))
+        }
+    }
+    $lines.Add('')
+    $lines.Add('## Existing entries with another glyph')
+    $lines.Add('')
+    $lines.Add('| Section | Key | Current glyph | Reference glyph | Current color | Reference color |')
+    $lines.Add('|---|---|---|---|---|---|')
+    foreach ($item in ($Comparison.Different | Sort-Object -Property Section, Key)) {
+        $lines.Add(('| {0} | {1} | {2} | {3} | {4} | {5} |' -f $item.Section, (& $cell $item.Key), $item.CurrentGlyph, $item.Glyph, $item.CurrentColor, $item.Color))
+    }
+    $lines.Add('')
+    $lines.Add('## Glyphs without a Nerd Fonts 3.5.1 name')
+    $lines.Add('')
+    $lines.Add('| Section | Key | Group | Code point |')
+    $lines.Add('|---|---|---|---|')
+    foreach ($item in $Comparison.Unmapped) { $lines.Add(('| {0} | {1} | {2} | {3} |' -f $item.Section, (& $cell $item.Key), $item.Group, $item.CodePoint)) }
+    $lines.Add('')
+    $lines.Add('## Icons without a color')
+    $lines.Add('')
+    $lines.Add('| Section | Key | Missing in | Reference color |')
+    $lines.Add('|---|---|---|---|')
+    foreach ($item in ($Comparison.MissingColor | Sort-Object -Property Section, Key)) {
+        $lines.Add(('| {0} | {1} | {2} | {3} |' -f $item.Section, (& $cell $item.Key), ($item.MissingIn -join ', '), $item.ReferenceColor))
+    }
+    $lines.Add('')
+    $lines.Add('## Folders without a color')
+    $lines.Add('')
+    $lines.Add('For information only: the reference has no folder icons.')
+    $lines.Add('')
+    $lines.Add('| Folder | Missing in |')
+    $lines.Add('|---|---|')
+    foreach ($item in ($Comparison.MissingFolderColor | Sort-Object -Property Key)) { $lines.Add(('| {0} | {1} |' -f (& $cell $item.Key), ($item.MissingIn -join ', '))) }
+    [System.IO.Directory]::CreateDirectory([System.IO.Path]::GetDirectoryName([System.IO.Path]::GetFullPath($Path))) | Out-Null
+    [System.IO.File]::WriteAllText($Path, ($lines -join "`n") + "`n", [System.Text.UTF8Encoding]::new($false))
+}
+
+Export-ModuleMember -Function Confirm-DeviconsData, Read-DeviconsFile, Get-NerdGlyphIndex, Select-GlyphName, Get-ContrastWithWhite, ConvertTo-Hsl, ConvertTo-LightColor, ConvertTo-DraculaColor, Get-DeviconsComparison, Write-DeviconsReport

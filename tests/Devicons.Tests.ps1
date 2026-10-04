@@ -153,3 +153,72 @@ Describe 'ConvertTo-DraculaColor' {
         ConvertTo-DraculaColor -Hex $Hex | Should -BeExactly $Expected
     }
 }
+
+Describe 'Get-DeviconsComparison' {
+    BeforeAll {
+        $world = New-FakeWorld 'compare'
+        $comparison = Get-DeviconsComparison -VendorPath $world.Vendor -GlyphNamesPath $world.GlyphNames -ThemesPath $world.Themes
+    }
+
+    It 'returns the reference commit' {
+        $comparison.Commit | Should -Be 'abc123'
+    }
+
+    It 'lists the entries the theme does not have' {
+        @($comparison.New.Key | Sort-Object) | Should -Be @('.d.ts', '.env', '.prettierrc', '.prettierrc.json', '.zig')
+        ($comparison.New | Where-Object Key -EQ '.zig').Glyph | Should -BeExactly 'nf-linux-l'
+    }
+
+    It 'treats a key that differs only in case as existing and reports the other glyph' {
+        $docker = @($comparison.Different)
+        $docker.Count | Should -Be 1
+        $docker[0].Key | Should -BeExactly 'Dockerfile'
+        $docker[0].CurrentKey | Should -BeExactly 'dockerfile'
+        $docker[0].CurrentGlyph | Should -BeExactly 'nf-dev-aaa'
+        $docker[0].Glyph | Should -BeExactly 'nf-md-bbb'
+        $comparison.New.Key | Should -Not -Contain 'Dockerfile'
+    }
+
+    It 'leaves out entries whose glyph is the same code point, even under another name' {
+        $comparison.New.Key + $comparison.Different.Key | Should -Not -Contain 'go.mod'
+        $comparison.New.Key + $comparison.Different.Key | Should -Not -Contain '.go'
+    }
+
+    It 'lists glyphs that Nerd Fonts does not name' {
+        @($comparison.Unmapped).Key | Should -Be @('weird')
+    }
+
+    It 'lists icons without a color and the reference color when there is one' {
+        $nocolor = $comparison.MissingColor | Where-Object Key -EQ 'nocolor'
+        @($nocolor.MissingIn) | Should -Be @('default', 'light', 'dracula')
+        $nocolor.ReferenceColor | Should -BeNullOrEmpty
+        $docker = $comparison.MissingColor | Where-Object Key -EQ 'dockerfile'
+        @($docker.MissingIn) | Should -Be @('light')
+        $docker.ReferenceColor | Should -BeExactly '458EE6'
+    }
+
+    It 'lists folders with an icon and without a color apart from files' {
+        $folders = @($comparison.MissingFolderColor)
+        $folders.Key | Should -Be @('.git')
+        @($folders[0].MissingIn) | Should -Be @('default', 'light', 'dracula')
+        $comparison.MissingColor.Key | Should -Not -Contain '.git'
+    }
+}
+
+Describe 'Write-DeviconsReport' {
+    It 'writes the groups, differences, unmapped glyphs and missing colors' {
+        $world = New-FakeWorld 'report'
+        $comparison = Get-DeviconsComparison -VendorPath $world.Vendor -GlyphNamesPath $world.GlyphNames -ThemesPath $world.Themes
+        $path = Join-Path $world.Root 'report.md'
+        Write-DeviconsReport -Comparison $comparison -Path $path
+        $text = [System.IO.File]::ReadAllText($path)
+        $text | Should -Match '(?m)^### PrettierConfig$'
+        $text | Should -Match ([regex]::Escape('| names | .prettierrc.json | nf-dev-aaa | 4285F4 |'))
+        $text | Should -Match ([regex]::Escape('| names | Dockerfile | nf-dev-aaa | nf-md-bbb |'))
+        $text | Should -Match 'weird'
+        $text | Should -Match ([regex]::Escape('| names | nocolor | default, light, dracula |'))
+        $text | Should -Match '(?m)^## Folders without a color'
+        $text | Should -Match ([regex]::Escape('| .git | default, light, dracula |'))
+        $text | Should -Match 'abc123'
+    }
+}
