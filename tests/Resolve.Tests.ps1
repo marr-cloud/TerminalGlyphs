@@ -64,6 +64,90 @@ Describe 'Merge-GlyphConfig' {
         }
     }
 
+    It 'resolves each distinct value once' {
+        InModuleScope TerminalGlyphs {
+            $table = New-GlyphTable
+            $theme = [ordered]@{
+                files       = [ordered]@{ names = [ordered]@{ 'a' = 'X'; 'b' = 'X'; 'c' = 'Y' }; extensions = [ordered]@{ '.x' = 'X' }; default = 'Y' }
+                directories = [ordered]@{ names = [ordered]@{ 'd' = 'X' } }
+            }
+            $calls = [System.Collections.Generic.List[string]]::new()
+            Merge-GlyphConfig -Table $table -Theme $theme -ThemeType Icon -Source 's' -Resolve { param($v) $calls.Add($v); "<$v>" }
+            @($calls | Sort-Object) | Should -Be @('X', 'Y')
+            $table.files.names['b'].Value | Should -Be '<X>'
+            $table.files.default.Value | Should -Be '<Y>'
+            $table.directories.names['d'].Value | Should -Be '<X>'
+        }
+    }
+
+    It 'takes values from -Lookup without calling -Resolve' {
+        InModuleScope TerminalGlyphs {
+            $table = New-GlyphTable
+            $theme = [ordered]@{ files = [ordered]@{ names = [ordered]@{ 'a' = 'X'; 'b' = 'Y' }; default = 'X' } }
+            $calls = [System.Collections.Generic.List[string]]::new()
+            Merge-GlyphConfig -Table $table -Theme $theme -ThemeType Icon -Source 's' -Lookup @{ X = 'from-lookup' } -Resolve { param($v) $calls.Add($v); "<$v>" }
+            @($calls) | Should -Be @('Y')
+            $table.files.names['a'].Value | Should -Be 'from-lookup'
+            $table.files.names['a'].Name | Should -Be 'X'
+            $table.files.names['b'].Value | Should -Be '<Y>'
+            $table.files.default.Value | Should -Be 'from-lookup'
+        }
+    }
+
+    It 'builds the same tables as an entry by entry merge for the <Type> theme <Name>' -ForEach @(
+        @{ Type = 'Icon'; Name = 'default' }
+        @{ Type = 'Color'; Name = 'default' }
+        @{ Type = 'Color'; Name = 'light' }
+        @{ Type = 'Color'; Name = 'dracula' }
+    ) {
+        InModuleScope TerminalGlyphs -Parameters @{ Type = $Type; Name = $Name } {
+            param($Type, $Name)
+            $data = Read-JsoncFile -Path $script:DataPath
+            $theme = if ($Type -eq 'Icon') { $data['iconThemes'][$Name] } else { $data['colorThemes'][$Name] }
+            $glyphs = $data['glyphs']
+            $resolve = if ($Type -eq 'Icon') { { param($v) $glyphs[$v] } } else { { param($v) ConvertTo-AnsiSequence -Hex $v } }
+
+            # The merge as 0.3.0 did it: one entry object and one -Resolve call per entry.
+            $expected = New-GlyphTable
+            foreach ($entry in (Get-GlyphThemeEntry -Theme $theme)) {
+                $target = $expected[$entry.Kind]
+                if ($null -eq $target -or $null -eq $entry.Section) { continue }
+                $resolved = & $resolve $entry.Value
+                if ($null -eq $resolved) { continue }
+                $valueName = $entry.Value
+                if ($Type -eq 'Color' -and $valueName -is [string]) { $valueName = $valueName.TrimStart('#').ToUpperInvariant() }
+                $item = [pscustomobject]@{ Value = $resolved; Name = $valueName; Source = 'theme' }
+                if ($entry.Section -ceq 'default') { $target['default'] = $item }
+                elseif ($null -ne $entry.Key -and $target.ContainsKey($entry.Section)) { $target[$entry.Section][$entry.Key] = $item }
+            }
+
+            $actual = New-GlyphTable
+            Merge-GlyphConfig -Table $actual -Theme $theme -ThemeType $Type -Source 'theme' -Resolve $resolve
+            $flatten = {
+                param($Table)
+                foreach ($kind in 'files', 'directories') {
+                    foreach ($section in @($Table[$kind].Keys | Sort-Object)) {
+                        $value = $Table[$kind][$section]
+                        if ($value -is [hashtable]) {
+                            foreach ($key in @($value.Keys | Sort-Object)) { '{0}.{1}[{2}]={3}|{4}|{5}' -f $kind, $section, $key, $value[$key].Value, $value[$key].Name, $value[$key].Source }
+                        } elseif ($null -ne $value) {
+                            '{0}.{1}={2}|{3}|{4}' -f $kind, $section, $value.Value, $value.Name, $value.Source
+                        }
+                    }
+                }
+            }
+            $expectedLines = @(& $flatten $expected)
+            $expectedLines.Count | Should -BeGreaterThan 50
+            @(& $flatten $actual) | Should -Be $expectedLines
+
+            # The way Initialize-TerminalGlyph merges the built-in themes: glyphs and ANSI sequences from data.json.
+            $lookup = if ($Type -eq 'Icon') { $glyphs } else { $data['ansi'] }
+            $withLookup = New-GlyphTable
+            Merge-GlyphConfig -Table $withLookup -Theme $theme -ThemeType $Type -Source 'theme' -Lookup $lookup -Resolve { param($v) throw "unexpected -Resolve for $v" }
+            @(& $flatten $withLookup) | Should -Be $expectedLines
+        }
+    }
+
     It 'ignores a null theme' {
         InModuleScope TerminalGlyphs {
             $table = New-GlyphTable

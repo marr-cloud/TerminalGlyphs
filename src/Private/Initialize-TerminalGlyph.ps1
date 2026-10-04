@@ -8,6 +8,7 @@ function Initialize-TerminalGlyph {
     try {
         $data = Read-JsoncFile -Path $script:DataPath
         $builtinGlyphs = $data['glyphs']
+        $builtinAnsi = $data['ansi']
         $configPath = Get-ConfigPath
         $config = Read-UserConfig -Path $configPath
 
@@ -32,13 +33,13 @@ function Initialize-TerminalGlyph {
 
         $icons = New-GlyphTable
         $colors = New-GlyphTable
-        Merge-GlyphConfig -Table $icons -Theme $data['iconThemes'][$iconThemeName] -ThemeType Icon -Source "theme:$iconThemeName" -Resolve $resolveIcon
-        Merge-GlyphConfig -Table $colors -Theme $data['colorThemes'][$colorThemeName] -ThemeType Color -Source "theme:$colorThemeName" -Resolve $resolveColor
+        Merge-GlyphConfig -Table $icons -Theme $data['iconThemes'][$iconThemeName] -ThemeType Icon -Source "theme:$iconThemeName" -Resolve $resolveIcon -Lookup $builtinGlyphs
+        Merge-GlyphConfig -Table $colors -Theme $data['colorThemes'][$colorThemeName] -ThemeType Color -Source "theme:$colorThemeName" -Resolve $resolveColor -Lookup $builtinAnsi
 
         if ($config) {
             $layers = @(
-                @{ Setting = 'icons'; Table = $icons; Type = 'Icon'; Resolve = $resolveIcon }
-                @{ Setting = 'colors'; Table = $colors; Type = 'Color'; Resolve = $resolveColor }
+                @{ Setting = 'icons'; Table = $icons; Type = 'Icon'; Resolve = $resolveIcon; Lookup = $builtinGlyphs }
+                @{ Setting = 'colors'; Table = $colors; Type = 'Color'; Resolve = $resolveColor; Lookup = $builtinAnsi }
             )
             foreach ($layer in $layers) {
                 $section = $config[$layer.Setting]
@@ -47,7 +48,7 @@ function Initialize-TerminalGlyph {
                     Write-GlyphWarning -Message "$($configPath): '$($layer.Setting)' must be an object, ignoring it."
                     continue
                 }
-                Merge-GlyphConfig -Table $layer.Table -Theme $section -ThemeType $layer.Type -Source 'user-config' -Origin $configPath -Validate -GlyphExists $glyphExists -Resolve $layer.Resolve
+                Merge-GlyphConfig -Table $layer.Table -Theme $section -ThemeType $layer.Type -Source 'user-config' -Origin $configPath -Validate -GlyphExists $glyphExists -Resolve $layer.Resolve -Lookup $layer.Lookup
             }
         }
 

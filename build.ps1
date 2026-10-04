@@ -29,7 +29,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
-foreach ($helper in 'Read-JsoncFile', 'Get-GlyphThemeEntry', 'Test-GlyphThemeEntry') {
+foreach ($helper in 'Read-JsoncFile', 'Get-GlyphThemeEntry', 'Test-GlyphThemeEntry', 'ConvertTo-AnsiSequence') {
     . ([System.IO.Path]::Combine($root, 'src', 'Private', "$helper.ps1"))
 }
 
@@ -138,7 +138,15 @@ function Invoke-ModuleBuild {
     [System.IO.Directory]::CreateDirectory($moduleDir) | Out-Null
     $utf8 = [System.Text.UTF8Encoding]::new($false)
 
-    $data = [ordered]@{ nerdFontsVersion = $nerd.Version; glyphs = $used; iconThemes = $iconThemes; colorThemes = $colorThemes }
+    # The ANSI sequence of every theme color, so the first listing does not convert them one by one.
+    $ansi = [System.Collections.Generic.SortedDictionary[string, string]]::new([System.StringComparer]::Ordinal)
+    foreach ($theme in $colorThemes.Values) {
+        foreach ($entry in (Get-GlyphThemeEntry -Theme $theme)) {
+            $ansi[$entry.Value.TrimStart('#').ToUpperInvariant()] = ConvertTo-AnsiSequence -Hex $entry.Value
+        }
+    }
+
+    $data = [ordered]@{ nerdFontsVersion = $nerd.Version; glyphs = $used; ansi = $ansi; iconThemes = $iconThemes; colorThemes = $colorThemes }
     [System.IO.File]::WriteAllText([System.IO.Path]::Combine($moduleDir, 'TerminalGlyphs.data.json'), ($data | ConvertTo-Json -Depth 10 -Compress), $utf8)
     [System.IO.File]::WriteAllText([System.IO.Path]::Combine($moduleDir, 'glyphs.json'), ($nerd.Glyphs | ConvertTo-Json -Compress), $utf8)
 
