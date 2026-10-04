@@ -222,3 +222,69 @@ Describe 'Write-DeviconsReport' {
         $text | Should -Match 'abc123'
     }
 }
+
+Describe 'Invoke-DeviconsApply' {
+    BeforeAll {
+        function Invoke-Apply($World, [string]$Decisions) {
+            $path = Join-Path $World.Root "decisions-$([guid]::NewGuid()).jsonc"
+            [System.IO.File]::WriteAllText($path, $Decisions)
+            $comparison = Get-DeviconsComparison -VendorPath $World.Vendor -GlyphNamesPath $World.GlyphNames -ThemesPath $World.Themes
+            Invoke-DeviconsApply -Comparison $comparison -ThemesPath $World.Themes -DecisionsPath $path
+        }
+        function Read-Theme($World, [string]$Relative) { Read-JsoncFile -Path (Join-Path $World.Themes $Relative) }
+        $decisions = '{ "exclude": [ "group:Env", ".d.ts" ], "adopt": [ "dockerfile" ], "colors": { "nocolor": "#123456" } }'
+    }
+
+    It 'adds the new entries that are not excluded, with derived colors' {
+        $world = New-FakeWorld 'apply-new'
+        Invoke-Apply $world $decisions | Out-Null
+        $icons = Read-Theme $world 'icons/default.jsonc'
+        $icons['files']['names']['.prettierrc'] | Should -BeExactly 'nf-dev-aaa'
+        $icons['files']['names']['.prettierrc.json'] | Should -BeExactly 'nf-dev-aaa'
+        $icons['files']['extensions']['.zig'] | Should -BeExactly 'nf-linux-l'
+        $icons['files']['extensions'].Keys | Should -Not -Contain '.env'
+        $icons['files']['extensions'].Keys | Should -Not -Contain '.d.ts'
+        (Read-Theme $world 'colors/default.jsonc')['files']['extensions']['.zig'] | Should -BeExactly 'F69A1B'
+        (Read-Theme $world 'colors/light.jsonc')['files']['extensions']['.zig'] | Should -BeExactly (ConvertTo-LightColor -Hex 'F69A1B')
+        (Read-Theme $world 'colors/dracula.jsonc')['files']['extensions']['.zig'] | Should -BeExactly (ConvertTo-DraculaColor -Hex 'F69A1B')
+    }
+
+    It 'changes an existing entry only when it is in adopt' {
+        $world = New-FakeWorld 'apply-adopt'
+        Invoke-Apply $world $decisions | Out-Null
+        (Read-Theme $world 'icons/default.jsonc')['files']['names']['dockerfile'] | Should -BeExactly 'nf-md-bbb'
+        (Read-Theme $world 'icons/default.jsonc')['files']['names']['go.mod'] | Should -BeExactly 'nf-dev-used'
+
+        $other = New-FakeWorld 'apply-keep'
+        Invoke-Apply $other '{ "exclude": [], "adopt": [], "colors": {} }' | Out-Null
+        (Read-Theme $other 'icons/default.jsonc')['files']['names']['dockerfile'] | Should -BeExactly 'nf-dev-aaa'
+        @((Read-Theme $other 'icons/default.jsonc')['files']['names'].Keys | Where-Object { $_ -eq 'dockerfile' }).Count | Should -Be 1
+    }
+
+    It 'fills missing colors from the reference or from the decisions file' {
+        $world = New-FakeWorld 'apply-colors'
+        Invoke-Apply $world $decisions | Out-Null
+        (Read-Theme $world 'colors/default.jsonc')['files']['names']['nocolor'] | Should -BeExactly '123456'
+        (Read-Theme $world 'colors/light.jsonc')['files']['names']['nocolor'] | Should -BeExactly '123456'
+        (Read-Theme $world 'colors/dracula.jsonc')['files']['names']['nocolor'] | Should -BeExactly (ConvertTo-DraculaColor -Hex '123456')
+        (Read-Theme $world 'colors/light.jsonc')['files']['names']['dockerfile'] | Should -BeExactly (ConvertTo-LightColor -Hex '458EE6')
+    }
+
+    It 'keeps the existing header and adds the credit line once' {
+        $world = New-FakeWorld 'apply-header'
+        Invoke-Apply $world $decisions | Out-Null
+        $lines = [System.IO.File]::ReadAllLines((Join-Path $world.Themes 'icons' 'default.jsonc'))
+        $lines[0] | Should -Match 'Migrated from Terminal-Icons'
+        $lines[1] | Should -Match 'nvim-web-devicons'
+        @($lines | Where-Object { $_ -match 'nvim-web-devicons' }).Count | Should -Be 1
+    }
+
+    It 'changes nothing when run again' {
+        $world = New-FakeWorld 'apply-twice'
+        Invoke-Apply $world $decisions | Out-Null
+        $before = Get-TreeSnapshot -Path $world.Themes
+        $second = Invoke-Apply $world $decisions
+        $second.Icons + $second.Colors | Should -Be 0
+        Get-TreeSnapshot -Path $world.Themes | Should -Be $before
+    }
+}

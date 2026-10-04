@@ -397,4 +397,97 @@ function Write-DeviconsReport {
     [System.IO.File]::WriteAllText($Path, ($lines -join "`n") + "`n", [System.Text.UTF8Encoding]::new($false))
 }
 
-Export-ModuleMember -Function Confirm-DeviconsData, Read-DeviconsFile, Get-NerdGlyphIndex, Select-GlyphName, Get-ContrastWithWhite, ConvertTo-Hsl, ConvertTo-LightColor, ConvertTo-DraculaColor, Get-DeviconsComparison, Write-DeviconsReport
+$script:CreditLine = '// Some entries from nvim-web-devicons (https://github.com/nvim-tree/nvim-web-devicons). MIT License. See THIRD_PARTY_NOTICES.md.'
+
+function Add-ThemeCreditLine {
+    # Adds the nvim-web-devicons credit after the leading comment lines of a theme file, once.
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string]$Path
+    )
+
+    $lines = [System.IO.File]::ReadAllLines($Path)
+    if ($lines -contains $script:CreditLine) { return }
+    $headerCount = 0
+    while ($headerCount -lt $lines.Count -and $lines[$headerCount] -match '^\s*//') { $headerCount++ }
+    $updated = [System.Collections.Generic.List[string]]::new()
+    for ($i = 0; $i -lt $headerCount; $i++) { $updated.Add($lines[$i]) }
+    $updated.Add($script:CreditLine)
+    for ($i = $headerCount; $i -lt $lines.Count; $i++) { $updated.Add($lines[$i]) }
+    [System.IO.File]::WriteAllText($Path, ($updated -join "`n") + "`n", [System.Text.UTF8Encoding]::new($false))
+}
+
+function Invoke-DeviconsApply {
+    # Writes the approved entries into the icon theme and the three color themes.
+    [OutputType([pscustomobject])]
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [pscustomobject]$Comparison,
+
+        [Parameter(Mandatory)]
+        [string]$ThemesPath,
+
+        [Parameter(Mandatory)]
+        [string]$DecisionsPath,
+
+        [string]$SetThemeEntryPath = ([System.IO.Path]::Combine($PSScriptRoot, 'Set-ThemeEntry.ps1'))
+    )
+
+    $decisions = Read-JsoncFile -Path $DecisionsPath
+    $exclude = [System.Collections.Generic.HashSet[string]]::new([string[]]@($decisions['exclude']), [System.StringComparer]::OrdinalIgnoreCase)
+    $adopt = [System.Collections.Generic.HashSet[string]]::new([string[]]@($decisions['adopt']), [System.StringComparer]::OrdinalIgnoreCase)
+    $manualColors = @{}
+    if ($decisions['colors']) { foreach ($key in $decisions['colors'].Keys) { $manualColors[$key] = $decisions['colors'][$key].TrimStart('#').ToUpperInvariant() } }
+
+    $iconEntries = @{ names = @{}; extensions = @{} }
+    $colorEntries = @{}
+    foreach ($theme in 'default', 'light', 'dracula') { $colorEntries[$theme] = @{ names = @{}; extensions = @{} } }
+    $setColor = {
+        param([string]$Section, [string]$Key, [string]$Hex, [string[]]$Themes)
+        foreach ($theme in $Themes) {
+            $colorEntries[$theme][$Section][$Key] = switch ($theme) {
+                'light' { ConvertTo-LightColor -Hex $Hex }
+                'dracula' { ConvertTo-DraculaColor -Hex $Hex }
+                default { $Hex }
+            }
+        }
+    }
+
+    foreach ($item in $Comparison.New) {
+        if ($exclude.Contains($item.Key) -or $exclude.Contains("group:$($item.Group)")) { continue }
+        $iconEntries[$item.Section][$item.Key] = $item.Glyph
+        & $setColor $item.Section $item.Key $item.Color @('default', 'light', 'dracula')
+    }
+    foreach ($item in $Comparison.Different) {
+        if (-not $adopt.Contains($item.CurrentKey)) { continue }
+        $iconEntries[$item.Section][$item.CurrentKey] = $item.Glyph
+        & $setColor $item.Section $item.CurrentKey $item.Color @('default', 'light', 'dracula')
+    }
+    foreach ($item in $Comparison.MissingColor) {
+        $hex = if ($item.ReferenceColor) { $item.ReferenceColor } elseif ($manualColors.ContainsKey($item.Key)) { $manualColors[$item.Key] } else { $null }
+        if (-not $hex) { continue }
+        foreach ($theme in $item.MissingIn) {
+            if (-not $colorEntries[$theme][$item.Section].ContainsKey($item.Key)) { & $setColor $item.Section $item.Key $hex @($theme) }
+        }
+    }
+
+    $written = [pscustomobject]@{ Icons = 0; Colors = 0 }
+    $targets = @(@{ Path = [System.IO.Path]::Combine($ThemesPath, 'icons', 'default.jsonc'); Entries = $iconEntries; Kind = 'Icons' })
+    foreach ($theme in 'default', 'light', 'dracula') { $targets += @{ Path = [System.IO.Path]::Combine($ThemesPath, 'colors', "$theme.jsonc"); Entries = $colorEntries[$theme]; Kind = 'Colors' } }
+    foreach ($target in $targets) {
+        $changed = $false
+        foreach ($section in 'names', 'extensions') {
+            $entries = $target.Entries[$section]
+            if ($entries.Count -eq 0) { continue }
+            & $SetThemeEntryPath -Path $target.Path -Section "files.$section" -Entries $entries
+            $written.($target.Kind) += $entries.Count
+            $changed = $true
+        }
+        if ($changed) { Add-ThemeCreditLine -Path $target.Path }
+    }
+    $written
+}
+
+Export-ModuleMember -Function Confirm-DeviconsData, Read-DeviconsFile, Get-NerdGlyphIndex, Select-GlyphName, Get-ContrastWithWhite, ConvertTo-Hsl, ConvertTo-LightColor, ConvertTo-DraculaColor, Get-DeviconsComparison, Write-DeviconsReport, Invoke-DeviconsApply
