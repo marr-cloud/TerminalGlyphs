@@ -294,3 +294,68 @@ Describe 'Install-NerdFontFile' {
         @(Get-ChildItem -LiteralPath $case.Fonts -Filter '*.old-nerdfont').Count | Should -Be 0
     }
 }
+
+Describe 'Remove-StaleFontFile' {
+    BeforeAll {
+        function New-StaleCase([datetime[]]$RenamedAt, [switch]$NoOriginal) {
+            $dir = Join-Path $TestDrive "stale-$([guid]::NewGuid())"
+            [System.IO.Directory]::CreateDirectory($dir) | Out-Null
+            if (-not $NoOriginal) { [System.IO.File]::WriteAllText((Join-Path $dir 'A.ttf'), 'new') }
+            foreach ($time in $RenamedAt) {
+                $stamp = $time.ToUniversalTime().ToString('yyyyMMddHHmmss', [cultureinfo]::InvariantCulture)
+                [System.IO.File]::WriteAllText((Join-Path $dir "A.ttf.$stamp.old-nerdfont"), "old $stamp")
+            }
+            $dir
+        }
+        $now = [DateTime]::UtcNow
+    }
+
+    It 'deletes a renamed file once Windows restarted after the rename' {
+        $dir = New-StaleCase -RenamedAt $now.AddHours(-2)
+        $result = Remove-StaleFontFile -FontDirectory $dir -BootTime $now.AddHours(-1)
+        $result.Removed | Should -Be 1
+        $result.Pending | Should -Be 0
+        @(Get-ChildItem -LiteralPath $dir -Filter '*.old-nerdfont').Count | Should -Be 0
+    }
+
+    It 'keeps every renamed copy until Windows restarts' {
+        $dir = New-StaleCase -RenamedAt $now.AddHours(-2), $now.AddMinutes(-5)
+        $result = Remove-StaleFontFile -FontDirectory $dir -BootTime $now.AddHours(-3)
+        $result.Pending | Should -Be 2
+        $result.Removed | Should -Be 0
+        @(Get-ChildItem -LiteralPath $dir -Filter '*.old-nerdfont').Count | Should -Be 2
+    }
+
+    It 'restores the newest renamed copy when the original is missing' {
+        $dir = New-StaleCase -RenamedAt $now.AddHours(-2), $now.AddMinutes(-5) -NoOriginal
+        $result = Remove-StaleFontFile -FontDirectory $dir -BootTime $now.AddHours(-3)
+        $result.Restored | Should -Be 1
+        $result.Pending | Should -Be 1
+        $newest = $now.AddMinutes(-5).ToString('yyyyMMddHHmmss', [cultureinfo]::InvariantCulture)
+        [System.IO.File]::ReadAllText((Join-Path $dir 'A.ttf')) | Should -Be "old $newest"
+    }
+
+    It 'ignores files without a timestamp' {
+        $dir = New-StaleCase -RenamedAt @()
+        [System.IO.File]::WriteAllText((Join-Path $dir 'A.ttf.old-nerdfont'), 'legacy')
+        $result = Remove-StaleFontFile -FontDirectory $dir -BootTime $now
+        $result.Removed + $result.Restored + $result.Pending | Should -Be 0
+        Join-Path $dir 'A.ttf.old-nerdfont' | Should -Exist
+    }
+
+    It 'changes nothing with -WhatIf' {
+        $dir = New-StaleCase -RenamedAt $now.AddHours(-2)
+        Remove-StaleFontFile -FontDirectory $dir -BootTime $now -WhatIf | Out-Null
+        @(Get-ChildItem -LiteralPath $dir -Filter '*.old-nerdfont').Count | Should -Be 1
+    }
+
+    It 'returns zeros for a missing folder' {
+        $result = Remove-StaleFontFile -FontDirectory (Join-Path $TestDrive 'none') -BootTime $now
+        $result.Removed + $result.Restored + $result.Pending | Should -Be 0
+    }
+
+    It 'reads the boot time from Windows by default' -Skip:(-not $IsWindows) {
+        $dir = New-StaleCase -RenamedAt $now.AddYears(-30)
+        (Remove-StaleFontFile -FontDirectory $dir).Removed | Should -Be 1
+    }
+}
