@@ -168,6 +168,12 @@ Describe 'ConvertTo-DarkColor' {
         }
     }
 
+    It 'lightens to 3:1 on another dark background' {
+        $dracula = ConvertTo-DarkColor -Hex '44475A' -Background '282A36'
+        Get-ContrastRatio -Hex $dracula -Background '282A36' | Should -BeGreaterOrEqual 3
+        Get-ContrastRatio -Hex (ConvertTo-DarkColor -Hex '44475A') -Background '282A36' | Should -BeLessThan 3
+    }
+
     It 'measures contrast like WCAG' {
         Get-ContrastRatio -Hex '000000' -Background 'FFFFFF' | Should -Be 21
         Get-ContrastRatio -Hex 'FFFFFF' -Background '000000' | Should -Be 21
