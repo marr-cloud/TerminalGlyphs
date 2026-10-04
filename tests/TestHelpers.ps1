@@ -146,3 +146,27 @@ function New-TestFont {
     [System.IO.File]::WriteAllBytes($Path, $font.ToArray())
     $Path
 }
+
+function Get-SystemTar {
+    # Git for Windows puts GNU tar first in PATH, which cannot read Windows paths; use the bsdtar shipped with Windows.
+    if ($IsWindows) { [System.IO.Path]::Combine($env:SystemRoot, 'System32', 'tar.exe') } else { 'tar' }
+}
+
+function New-FakeNerdFontRelease {
+    param(
+        [Parameter(Mandatory)][string]$Root,
+        [Parameter(Mandatory)][string]$Package,
+        [Parameter(Mandatory)][string[]]$FontName,
+        [string]$Version = 'Version 1.000;Nerd Fonts 3.5.1'
+    )
+    $source = Join-Path $Root "$Package-src"
+    foreach ($name in $FontName) {
+        New-TestFont -Path (Join-Path $source $name) -FullName "$([System.IO.Path]::GetFileNameWithoutExtension($name)) New" -Version $Version | Out-Null
+    }
+    $archive = Join-Path $Root "$Package.tar.xz"
+    & (Get-SystemTar) -cJf $archive -C $source .
+    if ($LASTEXITCODE -ne 0) { throw "tar could not create $archive" }
+    $hash = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+    Add-Content -LiteralPath (Join-Path $Root 'SHA-256.txt') -Value "$hash  $Package.tar.xz"
+    $Root
+}

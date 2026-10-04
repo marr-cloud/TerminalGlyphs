@@ -135,3 +135,50 @@ Describe 'Get-NerdFontInstallation' {
         Get-NerdFontInstallation -FontDirectory (Join-Path $TestDrive 'nope') -PackageMap $map -MinimumVersion '3.5.1' | Should -BeNullOrEmpty
     }
 }
+
+Describe 'Save-NerdFontRelease' {
+    BeforeAll {
+        $script:Release = New-FakeNerdFontRelease -Root (Join-Path $TestDrive 'release') -Package 'JetBrainsMono' -FontName 'JetBrainsMonoNerdFontMono-Regular.ttf', 'JetBrainsMonoNerdFont-Bold.ttf'
+        New-FakeNerdFontRelease -Root $script:Release -Package 'Hack' -FontName 'HackNerdFont-Regular.ttf' | Out-Null
+    }
+
+    BeforeEach {
+        Mock Invoke-NerdFontDownload { Copy-Item -LiteralPath (Join-Path $script:Release ($Uri -split '/')[-1]) -Destination $OutFile }
+        $work = Join-Path $TestDrive "work-$([guid]::NewGuid())"
+        [System.IO.Directory]::CreateDirectory($work) | Out-Null
+    }
+
+    It 'returns the extracted fonts after checking the SHA-256' {
+        $files = @(Save-NerdFontRelease -Package 'JetBrainsMono' -Version '3.5.1' -Destination $work)
+        $files.Count | Should -Be 2
+        [System.IO.Path]::GetFileName($files[0]) | Should -Be 'JetBrainsMonoNerdFont-Bold.ttf'
+        $files | ForEach-Object { $_ | Should -Exist }
+        (Read-FontInfo -Path $files[1]).FullName | Should -Be 'JetBrainsMonoNerdFontMono-Regular New'
+        Should -Invoke Invoke-NerdFontDownload -Times 1 -Exactly -ParameterFilter { $Uri -eq 'https://github.com/ryanoasis/nerd-fonts/releases/download/v3.5.1/JetBrainsMono.tar.xz' }
+        Should -Invoke Invoke-NerdFontDownload -Times 1 -Exactly -ParameterFilter { $Uri -eq 'https://github.com/ryanoasis/nerd-fonts/releases/download/v3.5.1/SHA-256.txt' }
+    }
+
+    It 'downloads SHA-256.txt once per destination' {
+        Save-NerdFontRelease -Package 'JetBrainsMono' -Version '3.5.1' -Destination $work | Out-Null
+        Save-NerdFontRelease -Package 'Hack' -Version '3.5.1' -Destination $work | Out-Null
+        Should -Invoke Invoke-NerdFontDownload -Times 1 -Exactly -ParameterFilter { $Uri -like '*/SHA-256.txt' }
+    }
+
+    It 'refuses an archive whose checksum does not match' {
+        Mock Invoke-NerdFontDownload {
+            if ($Uri -like '*/SHA-256.txt') { Set-Content -LiteralPath $OutFile -Value "$('0' * 64)  JetBrainsMono.tar.xz" }
+            else { Copy-Item -LiteralPath (Join-Path $script:Release 'JetBrainsMono.tar.xz') -Destination $OutFile }
+        }
+        { Save-NerdFontRelease -Package 'JetBrainsMono' -Version '3.5.1' -Destination $work } | Should -Throw '*Checksum mismatch*'
+        Join-Path $work 'JetBrainsMono' | Should -Not -Exist
+    }
+
+    It 'fails when the package is not in SHA-256.txt' {
+        { Save-NerdFontRelease -Package 'Nope' -Version '3.5.1' -Destination $work } | Should -Throw '*no entry for Nope.tar.xz*'
+    }
+
+    It 'lets download errors through' {
+        Mock Invoke-NerdFontDownload { throw 'network down' }
+        { Save-NerdFontRelease -Package 'Hack' -Version '3.5.1' -Destination $work } | Should -Throw '*network down*'
+    }
+}
