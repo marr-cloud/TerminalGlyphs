@@ -92,3 +92,57 @@ function Get-GlyphChar {
     if (-not $entry) { throw "Unknown glyph $Name" }
     [char]::ConvertFromUtf32([Convert]::ToInt32($entry['code'], 16))
 }
+
+function New-TestFont {
+    # A minimal sfnt with only a 'name' table: enough for Read-FontInfo, not a usable font.
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [string]$FullName = 'Test NFM Regular',
+        [string]$Family = 'Test NFM',
+        [string]$TypographicFamily = 'Test Nerd Font Mono',
+        [string]$Version = 'Version 1.000;Nerd Fonts 3.5.1'
+    )
+    $records = [System.Collections.Generic.List[object]]::new()
+    $records.Add(@(1, 0x409, $Family))
+    $records.Add(@(4, 0x409, $FullName))
+    $records.Add(@(5, 0x409, $Version))
+    if ($TypographicFamily) {
+        # A British English record first: Read-FontInfo must prefer US English, as real Nerd Fonts need.
+        $records.Add(@(16, 0x809, 'Wrong Family'))
+        $records.Add(@(16, 0x409, $TypographicFamily))
+    }
+    $put = {
+        param($List, [long]$Value, [int]$Size)
+        for ($shift = 8 * ($Size - 1); $shift -ge 0; $shift -= 8) { $List.Add([byte](($Value -shr $shift) -band 0xFF)) }
+    }
+    $strings = [System.Collections.Generic.List[byte]]::new()
+    $table = [System.Collections.Generic.List[byte]]::new()
+    & $put $table 0 2
+    & $put $table $records.Count 2
+    & $put $table (6 + 12 * $records.Count) 2
+    foreach ($record in $records) {
+        $text = [System.Text.Encoding]::BigEndianUnicode.GetBytes([string]$record[2])
+        & $put $table 3 2
+        & $put $table 1 2
+        & $put $table $record[1] 2
+        & $put $table $record[0] 2
+        & $put $table $text.Length 2
+        & $put $table $strings.Count 2
+        $strings.AddRange($text)
+    }
+    $table.AddRange($strings)
+    $font = [System.Collections.Generic.List[byte]]::new()
+    & $put $font 0x00010000 4
+    & $put $font 1 2
+    & $put $font 16 2
+    & $put $font 0 2
+    & $put $font 0 2
+    $font.AddRange([byte[]][char[]]'name')
+    & $put $font 0 4
+    & $put $font 28 4
+    & $put $font $table.Count 4
+    $font.AddRange($table)
+    [System.IO.Directory]::CreateDirectory([System.IO.Path]::GetDirectoryName($Path)) | Out-Null
+    [System.IO.File]::WriteAllBytes($Path, $font.ToArray())
+    $Path
+}
