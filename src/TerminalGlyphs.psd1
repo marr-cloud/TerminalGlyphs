@@ -8,7 +8,7 @@
     Copyright            = '(c) 2026 marr-cloud. MIT License.'
     Description          = 'Nerd Font icons and colors for files and folders in Get-ChildItem. A reimplementation of Terminal-Icons that never writes to disk on import.'
     PowerShellVersion    = '7.4'
-    FunctionsToExport    = @('Format-TerminalGlyph', 'Get-TerminalGlyph', 'Show-TerminalGlyphTheme', 'Find-NerdGlyph', 'Update-TerminalGlyphConfig')
+    FunctionsToExport    = @('Format-TerminalGlyph', 'Get-TerminalGlyph', 'Show-TerminalGlyphTheme', 'Find-NerdGlyph', 'Update-TerminalGlyphConfig', 'Install-TerminalGlyphSetup')
     CmdletsToExport      = @()
     VariablesToExport    = @()
     AliasesToExport      = @()
