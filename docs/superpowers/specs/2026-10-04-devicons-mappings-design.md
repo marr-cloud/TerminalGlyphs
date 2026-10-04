@@ -2,7 +2,7 @@
 
 - **Fecha:** 2026-10-04
 - **Autor:** marr-cloud
-- **Estado:** diseño aprobado por secciones en el brainstorming; pendiente de revisión de la spec escrita
+- **Estado:** aprobada; actualizada tras la revisión final (colores en las secciones 3 y 4)
 - **Base:** TerminalGlyphs 0.2.2 (`main` = 2850f00)
 - **Rama:** `feat/0.3.0-mappings`
 
@@ -94,6 +94,12 @@ Genera `docs/mappings/devicons-0.3.0.md` con:
 - `adopt`: claves existentes cuyo glifo y color se sustituyen por los de la referencia (en `light` y `dracula` con las
   derivaciones de la sección 4);
 - `colors`: colores elegidos a mano para entradas sin color que la referencia no cubre.
+- `folders`: colores para carpetas con icono y sin color (añadido tras la revisión, a petición del usuario).
+- `aliases`: nombres de archivo que se mapean como una clave de la referencia (`config.ru` → `.config.ru`, que la
+  referencia solo tiene como extensión).
+
+El archivo se valida antes de escribir: ajustes desconocidos, listas u objetos con otro tipo y colores que no son
+`#RRGGBB` se rechazan; las entradas que no coinciden con nada (claves, grupos, carpetas) generan un aviso.
 
 Escribe en `themes/icons/default.jsonc` y en `themes/colors/{default,light,dracula}.jsonc` reutilizando la lógica de
 `tools/Set-ThemeEntry.ps1` (conserva la cabecera, ordena claves, evita duplicados por mayúsculas). Es idempotente: una
@@ -101,12 +107,16 @@ segunda ejecución con los mismos datos no cambia nada. Con datos nuevos de la r
 
 ## 4. Colores
 
-- **default:** el color de la referencia.
+- **default:** el color de la referencia salvo que su contraste sobre `#1E1E1E` sea menor de 3:1; entonces se sube la
+  luminosidad HSL, conservando tono y croma, hasta alcanzar 3:1 (añadido tras la revisión: 64 entradas de la
+  referencia eran casi ilegibles sobre fondo oscuro).
 - **light:** el mismo color salvo que su contraste sobre `#FFFFFF` sea menor de 3:1 (WCAG para elementos que no son
-  texto); entonces se baja la luminosidad en HSL, conservando tono y saturación, hasta alcanzar 3:1.
+  texto); entonces se baja la luminosidad HSL, conservando tono y croma, hasta alcanzar 3:1. (La versión inicial
+  conservaba la saturación HSL, que es alta en los blancos con un leve tinte y los volvía colores vivos.)
 - **dracula:** el color más cercano de la paleta Dracula (`FF5555`, `FFB86C`, `F1FA8C`, `50FA7B`, `8BE9FD`, `BD93F9`,
-  `FF79C6`) por tono; los colores con saturación menor de 0,15 van a `F8F8F2` si su luminosidad es al menos 0,5 y a
-  `6272A4` si no. Los colores de marca existentes en `dracula` no se tocan.
+  `FF79C6`) por tono; los colores con saturación HSV menor de 0,2 (grises y blancos con un leve tinte) van a `F8F8F2`
+  si su luminosidad es al menos 0,5 y a `6272A4` si no. Los colores de marca existentes en `dracula` no se tocan.
+- Las tres reglas solo se aplican a lo que escribe la herramienta; los colores existentes no cambian salvo `adopt`.
 - **Sin color:** las entradas con icono y sin color toman el color de la referencia si existe; si no, el de `colors`
   en el archivo de decisiones.
 - Ambas derivaciones son funciones puras con tests de casos fijos.

@@ -131,6 +131,7 @@
       "compose.yml": "nf-dev-docker",
       "composer.lock": "nf-seti-json",
       "config": "nf-seti-config",
+      "config.ru": "nf-dev-ruby_rough",
       "Containerfile": "nf-dev-docker",
       "copilot-instructions.md": "nf-cod-sparkle",
       "copying": "nf-seti-license",

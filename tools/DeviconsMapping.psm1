@@ -40,7 +40,13 @@ function Read-DeviconsFile {
 
     $text = [System.IO.File]::ReadAllText($Path)
     $pattern = '\["(?<key>[^"]+)"\]\s*=\s*\{\s*icon\s*=\s*"(?<icon>[^"]*)",\s*color\s*=\s*"#(?<color>[0-9A-Fa-f]{6})",\s*cterm_color\s*=\s*"\d+",\s*name\s*=\s*"(?<name>[^"]+)"\s*,?\s*\}'
-    foreach ($match in [regex]::Matches($text, $pattern)) {
+    $found = [regex]::Matches($text, $pattern)
+    # A new vendored version could change the entry format; entries must not disappear silently.
+    $total = [regex]::Matches($text, '\["[^"]+"\]\s*=').Count
+    if ($found.Count -ne $total) {
+        throw "$($Path): could not read $($total - $found.Count) of $total entries; the nvim-web-devicons format may have changed."
+    }
+    foreach ($match in $found) {
         $key = $match.Groups['key'].Value
         if ($Extension) { $key = ".$key" }
         [pscustomobject]@{
@@ -107,8 +113,8 @@ function Select-GlyphName {
 
 $script:DraculaPalette = @('FF5555', 'FFB86C', 'F1FA8C', '50FA7B', '8BE9FD', 'BD93F9', 'FF79C6')
 
-function Get-ContrastWithWhite {
-    # WCAG contrast ratio of a color against #FFFFFF.
+function Get-RelativeLuminance {
+    # WCAG relative luminance of a color.
     [OutputType([double])]
     [CmdletBinding()]
     param(
@@ -121,8 +127,36 @@ function Get-ContrastWithWhite {
         $channel = [Convert]::ToInt32($value.Substring($offset, 2), 16) / 255.0
         if ($channel -le 0.04045) { $channel / 12.92 } else { [Math]::Pow(($channel + 0.055) / 1.055, 2.4) }
     }
-    $luminance = 0.2126 * $channels[0] + 0.7152 * $channels[1] + 0.0722 * $channels[2]
-    1.05 / ($luminance + 0.05)
+    0.2126 * $channels[0] + 0.7152 * $channels[1] + 0.0722 * $channels[2]
+}
+
+function Get-ContrastRatio {
+    # WCAG contrast ratio between a color and a background color.
+    [OutputType([double])]
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string]$Hex,
+
+        [Parameter(Mandatory)]
+        [string]$Background
+    )
+
+    $one = (Get-RelativeLuminance -Hex $Hex) + 0.05
+    $two = (Get-RelativeLuminance -Hex $Background) + 0.05
+    [Math]::Max($one, $two) / [Math]::Min($one, $two)
+}
+
+function Get-ContrastWithWhite {
+    # WCAG contrast ratio of a color against #FFFFFF.
+    [OutputType([double])]
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string]$Hex
+    )
+
+    Get-ContrastRatio -Hex $Hex -Background 'FFFFFF'
 }
 
 function ConvertTo-Hsl {
@@ -178,9 +212,39 @@ function ConvertFrom-Hsl {
     ($rgb | ForEach-Object { '{0:X2}' -f [int][Math]::Round(($_ + $match) * 255) }) -join ''
 }
 
+function Get-ContrastingColor {
+    # Moves the lightness of a color (same hue and chroma) in steps of 0.01 until it has 3:1 contrast on -Background.
+    # HSL saturation is not kept: almost white colors have a high saturation and would turn vivid when darkened.
+    [OutputType([string])]
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string]$Hex,
+
+        [Parameter(Mandatory)]
+        [string]$Background,
+
+        [Parameter(Mandatory)]
+        [ValidateSet(-1, 1)]
+        [int]$Direction
+    )
+
+    $value = $Hex.TrimStart('#').ToUpperInvariant()
+    if ((Get-ContrastRatio -Hex $value -Background $Background) -ge 3) { return $value }
+    $hue, $saturation, $lightness = ConvertTo-Hsl -Hex $value
+    $chroma = (1 - [Math]::Abs(2 * $lightness - 1)) * $saturation
+    while (($Direction -lt 0 -and $lightness -gt 0) -or ($Direction -gt 0 -and $lightness -lt 1)) {
+        $lightness = [Math]::Min(1.0, [Math]::Max(0.0, $lightness + 0.01 * $Direction))
+        $room = 1 - [Math]::Abs(2 * $lightness - 1)
+        $candidateSaturation = if ($room -gt 0) { [Math]::Min(1.0, $chroma / $room) } else { 0.0 }
+        $candidate = ConvertFrom-Hsl -Hue $hue -Saturation $candidateSaturation -Lightness $lightness
+        if ((Get-ContrastRatio -Hex $candidate -Background $Background) -ge 3) { return $candidate }
+    }
+    if ($Direction -lt 0) { '000000' } else { 'FFFFFF' }
+}
+
 function ConvertTo-LightColor {
     # The same color for the light theme, darkened (same hue and chroma) until it has 3:1 contrast on white.
-    # HSL saturation is not kept: almost white colors have a high saturation and would turn vivid when darkened.
     [OutputType([string])]
     [CmdletBinding()]
     param(
@@ -188,18 +252,20 @@ function ConvertTo-LightColor {
         [string]$Hex
     )
 
-    $value = $Hex.TrimStart('#').ToUpperInvariant()
-    if ((Get-ContrastWithWhite -Hex $value) -ge 3) { return $value }
-    $hue, $saturation, $lightness = ConvertTo-Hsl -Hex $value
-    $chroma = (1 - [Math]::Abs(2 * $lightness - 1)) * $saturation
-    while ($lightness -gt 0) {
-        $lightness = [Math]::Max(0.0, $lightness - 0.01)
-        $room = 1 - [Math]::Abs(2 * $lightness - 1)
-        $candidateSaturation = if ($room -gt 0) { [Math]::Min(1.0, $chroma / $room) } else { 0.0 }
-        $candidate = ConvertFrom-Hsl -Hue $hue -Saturation $candidateSaturation -Lightness $lightness
-        if ((Get-ContrastWithWhite -Hex $candidate) -ge 3) { return $candidate }
-    }
-    '000000'
+    Get-ContrastingColor -Hex $Hex -Background 'FFFFFF' -Direction -1
+}
+
+function ConvertTo-DarkColor {
+    # The same color for the default theme, lightened (same hue and chroma) until it has 3:1 contrast on a dark
+    # terminal background (#1E1E1E).
+    [OutputType([string])]
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string]$Hex
+    )
+
+    Get-ContrastingColor -Hex $Hex -Background '1E1E1E' -Direction 1
 }
 
 function ConvertTo-DraculaColor {
@@ -281,6 +347,7 @@ function Get-DeviconsComparison {
         Unmapped     = [System.Collections.Generic.List[object]]::new()
         MissingColor = [System.Collections.Generic.List[object]]::new()
         MissingFolderColor = [System.Collections.Generic.List[object]]::new()
+        Reference    = [System.Collections.Generic.List[object]]::new()
     }
     $reference = @{}
     foreach ($source in @(@{ File = 'icons_by_filename.lua'; Section = 'names'; Extension = $false }, @{ File = 'icons_by_file_extension.lua'; Section = 'extensions'; Extension = $true })) {
@@ -295,6 +362,7 @@ function Get-DeviconsComparison {
                 $result.Unmapped.Add([pscustomobject]@{ Section = $source.Section; Key = $entry.Key; Group = $entry.Group; CodePoint = ('U+{0:X4}' -f $codePoint) })
                 continue
             }
+            $result.Reference.Add([pscustomobject]@{ Section = $source.Section; Key = $entry.Key; Group = $entry.Group; Glyph = $glyph; Color = $entry.Color })
             $currentKey = Find-ThemeKey -Map $map -Key $entry.Key
             $item = [pscustomobject]@{
                 Section      = $source.Section
@@ -305,6 +373,17 @@ function Get-DeviconsComparison {
                 CurrentKey   = $currentKey
                 CurrentGlyph = if ($currentKey) { $map[$currentKey] } else { $null }
                 CurrentColor = $null
+                Replaces     = $null
+            }
+            if (-not $currentKey) {
+                # The extension rule that shows these files today, found like the module does (longest suffix first).
+                $fileName = if ($source.Extension) { "x$($entry.Key)" } else { $entry.Key }
+                $dot = $fileName.IndexOf('.')
+                while ($dot -ge 0 -and -not $item.Replaces) {
+                    $suffix = Find-ThemeKey -Map $icons['files']['extensions'] -Key $fileName.Substring($dot)
+                    if ($suffix) { $item.Replaces = "files.extensions[$suffix]" }
+                    $dot = $fileName.IndexOf('.', $dot + 1)
+                }
             }
             if ($currentKey) {
                 $colorKey = Find-ThemeKey -Map $colorMap -Key $currentKey
@@ -361,14 +440,16 @@ function Write-DeviconsReport {
     $lines.Add("| Icons without a color in some theme | $($Comparison.MissingColor.Count) |")
     $lines.Add('')
     $lines.Add('## New entries')
+    $lines.Add('')
+    $lines.Add('Default, Light and Dracula are the colors written to each theme (default: at least 3:1 on #1E1E1E; light: at least 3:1 on white). Replaces is the extension rule that shows those files today.')
     foreach ($group in ($Comparison.New | Group-Object -Property Group | Sort-Object -Property Name)) {
         $lines.Add('')
         $lines.Add("### $($group.Name)")
         $lines.Add('')
-        $lines.Add('| Section | Key | Glyph | Color |')
-        $lines.Add('|---|---|---|---|')
+        $lines.Add('| Section | Key | Glyph | Reference color | Default | Light | Dracula | Replaces |')
+        $lines.Add('|---|---|---|---|---|---|---|---|')
         foreach ($item in ($group.Group | Sort-Object -Property Section, Key)) {
-            $lines.Add(('| {0} | {1} | {2} | {3} |' -f $item.Section, (& $cell $item.Key), $item.Glyph, $item.Color))
+            $lines.Add(('| {0} | {1} | {2} | {3} | {4} | {5} | {6} | {7} |' -f $item.Section, (& $cell $item.Key), $item.Glyph, $item.Color, (ConvertTo-DarkColor -Hex $item.Color), (ConvertTo-LightColor -Hex $item.Color), (ConvertTo-DraculaColor -Hex $item.Color), (& $cell $item.Replaces)))
         }
     }
     $lines.Add('')
@@ -426,6 +507,51 @@ function Add-ThemeCreditLine {
     [System.IO.File]::WriteAllText($Path, ($updated -join "`n") + "`n", [System.Text.UTF8Encoding]::new($false))
 }
 
+function Read-DeviconsDecision {
+    # Reads and checks the decisions file: known settings only, lists where lists go, colors as RRGGBB.
+    [OutputType([hashtable])]
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string]$Path
+    )
+
+    if (-not [System.IO.File]::Exists($Path)) { throw "decisions file not found: $Path" }
+    try {
+        $raw = Read-JsoncFile -Path $Path
+    } catch {
+        throw "$($Path): the decisions file is not valid JSONC: $($_.Exception.Message)"
+    }
+    if ($raw -isnot [System.Collections.IDictionary]) { throw "$($Path): the decisions file must be an object." }
+    $known = 'exclude', 'adopt', 'colors', 'folders', 'aliases'
+    foreach ($name in $raw.Keys) {
+        if ($known -notcontains $name) { throw "$($Path): unknown setting `"$name`" (use $($known -join ', '))." }
+    }
+    $decisions = @{}
+    foreach ($name in 'exclude', 'adopt') {
+        $value = $raw[$name]
+        if ($null -ne $value -and ($value -is [string] -or $value -isnot [System.Collections.IEnumerable])) { throw "$($Path): `"$name`" must be a list." }
+        $decisions[$name] = [string[]]@($value | Where-Object { $null -ne $_ })
+    }
+    foreach ($name in 'colors', 'folders', 'aliases') {
+        $value = $raw[$name]
+        if ($null -ne $value -and $value -isnot [System.Collections.IDictionary]) { throw "$($Path): `"$name`" must be an object." }
+        $map = [ordered]@{}
+        if ($value) {
+            foreach ($key in $value.Keys) {
+                $item = [string]$value[$key]
+                if ($name -ne 'aliases') {
+                    if ($item -notmatch '^#?[0-9A-Fa-f]{6}$') { throw "$($Path): $name.$key = `"$item`" is not a color (use #RRGGBB)." }
+                    $item = $item.TrimStart('#').ToUpperInvariant()
+                }
+                $map[$key] = $item
+            }
+        }
+        $decisions[$name] = $map
+    }
+    $decisions
+}
+
 function Invoke-DeviconsApply {
     # Writes the approved entries into the icon theme and the three color themes.
     [OutputType([pscustomobject])]
@@ -443,60 +569,106 @@ function Invoke-DeviconsApply {
         [string]$SetThemeEntryPath = ([System.IO.Path]::Combine($PSScriptRoot, 'Set-ThemeEntry.ps1'))
     )
 
-    $decisions = Read-JsoncFile -Path $DecisionsPath
-    $exclude = [System.Collections.Generic.HashSet[string]]::new([string[]]@($decisions['exclude']), [System.StringComparer]::OrdinalIgnoreCase)
-    $adopt = [System.Collections.Generic.HashSet[string]]::new([string[]]@($decisions['adopt']), [System.StringComparer]::OrdinalIgnoreCase)
-    $manualColors = @{}
-    if ($decisions['colors']) { foreach ($key in $decisions['colors'].Keys) { $manualColors[$key] = $decisions['colors'][$key].TrimStart('#').ToUpperInvariant() } }
+    $decisions = Read-DeviconsDecision -Path $DecisionsPath
+    $exclude = [System.Collections.Generic.HashSet[string]]::new($decisions['exclude'], [System.StringComparer]::OrdinalIgnoreCase)
+    $adopt = [System.Collections.Generic.HashSet[string]]::new($decisions['adopt'], [System.StringComparer]::OrdinalIgnoreCase)
+    $themeNames = 'default', 'light', 'dracula'
+    $icons = Read-JsoncFile -Path ([System.IO.Path]::Combine($ThemesPath, 'icons', 'default.jsonc'))
+    $currentColors = @{}
+    foreach ($theme in $themeNames) { $currentColors[$theme] = Read-JsoncFile -Path ([System.IO.Path]::Combine($ThemesPath, 'colors', "$theme.jsonc")) }
+    $getMap = {
+        param([System.Collections.IDictionary]$Theme, [string]$Section)
+        $kind, $name = $Section.Split('.')
+        if ($Theme -and $Theme[$kind]) { $Theme[$kind][$name] }
+    }
+    $hasKey = { param($Map, [string]$Key) [bool](Find-ThemeKey -Map $Map -Key $Key) }
 
-    $iconEntries = @{ names = @{}; extensions = @{} }
+    # Decisions that match nothing are probably typos: say so instead of ignoring them.
+    $referenceKeys = [System.Collections.Generic.HashSet[string]]::new([string[]]@($Comparison.Reference.Key), [System.StringComparer]::OrdinalIgnoreCase)
+    $groups = [System.Collections.Generic.HashSet[string]]::new([string[]]@($Comparison.Reference.Group), [System.StringComparer]::OrdinalIgnoreCase)
+    $iconKeys = @((& $getMap $icons 'files.names').Keys) + @((& $getMap $icons 'files.extensions').Keys)
+    foreach ($key in $decisions['exclude']) {
+        $known = if ($key.StartsWith('group:')) { $groups.Contains($key.Substring(6)) } else { $referenceKeys.Contains($key) }
+        if (-not $known) { Write-Warning "exclude: `"$key`" is not an nvim-web-devicons key or group." }
+    }
+    foreach ($key in $decisions['adopt']) {
+        if (-not $referenceKeys.Contains($key) -or $iconKeys -notcontains $key) { Write-Warning "adopt: `"$key`" is not an existing theme key that nvim-web-devicons maps." }
+    }
+    foreach ($key in $decisions['colors'].Keys) {
+        if ($iconKeys -notcontains $key) { Write-Warning "colors: `"$key`" has no file icon in the theme." }
+    }
+    foreach ($key in $decisions['folders'].Keys) {
+        if (-not (& $hasKey (& $getMap $icons 'directories.names') $key)) { Write-Warning "folders: `"$key`" has no folder icon in the theme." }
+    }
+
+    $iconEntries = @{ 'files.names' = @{}; 'files.extensions' = @{} }
     $colorEntries = @{}
-    foreach ($theme in 'default', 'light', 'dracula') { $colorEntries[$theme] = @{ names = @{}; extensions = @{} } }
+    foreach ($theme in $themeNames) { $colorEntries[$theme] = @{ 'files.names' = @{}; 'files.extensions' = @{}; 'directories.names' = @{} } }
     $setColor = {
         param([string]$Section, [string]$Key, [string]$Hex, [string[]]$Themes)
         foreach ($theme in $Themes) {
             $colorEntries[$theme][$Section][$Key] = switch ($theme) {
                 'light' { ConvertTo-LightColor -Hex $Hex }
                 'dracula' { ConvertTo-DraculaColor -Hex $Hex }
-                default { $Hex }
+                default { ConvertTo-DarkColor -Hex $Hex }
             }
         }
     }
-
     # A theme can already color a key that has no icon yet; that color is an existing mapping and stays.
-    $currentColors = @{}
-    foreach ($theme in 'default', 'light', 'dracula') { $currentColors[$theme] = (Read-JsoncFile -Path ([System.IO.Path]::Combine($ThemesPath, 'colors', "$theme.jsonc")))['files'] }
+    $uncolored = {
+        param([string]$Section, [string]$Key)
+        foreach ($theme in $themeNames) {
+            if (-not (& $hasKey (& $getMap $currentColors[$theme] $Section) $Key) -and -not $colorEntries[$theme][$Section].ContainsKey($Key)) { $theme }
+        }
+    }
+
     foreach ($item in $Comparison.New) {
         if ($exclude.Contains($item.Key) -or $exclude.Contains("group:$($item.Group)")) { continue }
-        $iconEntries[$item.Section][$item.Key] = $item.Glyph
-        $uncolored = @(foreach ($theme in 'default', 'light', 'dracula') {
-                $map = if ($currentColors[$theme]) { $currentColors[$theme][$item.Section] }
-                if (-not (Find-ThemeKey -Map $map -Key $item.Key)) { $theme }
-            })
-        if ($uncolored.Count -gt 0) { & $setColor $item.Section $item.Key $item.Color $uncolored }
+        $section = "files.$($item.Section)"
+        $iconEntries[$section][$item.Key] = $item.Glyph
+        $themes = @(& $uncolored $section $item.Key)
+        if ($themes.Count -gt 0) { & $setColor $section $item.Key $item.Color $themes }
     }
     foreach ($item in $Comparison.Different) {
         if (-not $adopt.Contains($item.CurrentKey)) { continue }
-        $iconEntries[$item.Section][$item.CurrentKey] = $item.Glyph
-        & $setColor $item.Section $item.CurrentKey $item.Color @('default', 'light', 'dracula')
+        $section = "files.$($item.Section)"
+        $iconEntries[$section][$item.CurrentKey] = $item.Glyph
+        & $setColor $section $item.CurrentKey $item.Color $themeNames
     }
     foreach ($item in $Comparison.MissingColor) {
-        $hex = if ($item.ReferenceColor) { $item.ReferenceColor } elseif ($manualColors.ContainsKey($item.Key)) { $manualColors[$item.Key] } else { $null }
+        $hex = if ($item.ReferenceColor) { $item.ReferenceColor } elseif ($decisions['colors'].Contains($item.Key)) { $decisions['colors'][$item.Key] } else { $null }
         if (-not $hex) { continue }
+        $section = "files.$($item.Section)"
         foreach ($theme in $item.MissingIn) {
-            if (-not $colorEntries[$theme][$item.Section].ContainsKey($item.Key)) { & $setColor $item.Section $item.Key $hex @($theme) }
+            if (-not $colorEntries[$theme][$section].ContainsKey($item.Key)) { & $setColor $section $item.Key $hex @($theme) }
         }
+    }
+    foreach ($key in $decisions['folders'].Keys) {
+        $themes = @(& $uncolored 'directories.names' $key)
+        if ($themes.Count -gt 0) { & $setColor 'directories.names' $key $decisions['folders'][$key] $themes }
+    }
+    # A file name that should look like a reference entry, e.g. config.ru, which the reference only maps as an extension.
+    foreach ($alias in $decisions['aliases'].Keys) {
+        $target = $Comparison.Reference | Where-Object { $_.Key -eq $decisions['aliases'][$alias] } | Select-Object -First 1
+        if (-not $target) {
+            Write-Warning "aliases: `"$($decisions['aliases'][$alias])`" is not an nvim-web-devicons key."
+            continue
+        }
+        if (& $hasKey (& $getMap $icons 'files.names') $alias) { continue }
+        $iconEntries['files.names'][$alias] = $target.Glyph
+        $themes = @(& $uncolored 'files.names' $alias)
+        if ($themes.Count -gt 0) { & $setColor 'files.names' $alias $target.Color $themes }
     }
 
     $written = [pscustomobject]@{ Icons = 0; Colors = 0 }
     $targets = @(@{ Path = [System.IO.Path]::Combine($ThemesPath, 'icons', 'default.jsonc'); Entries = $iconEntries; Kind = 'Icons' })
-    foreach ($theme in 'default', 'light', 'dracula') { $targets += @{ Path = [System.IO.Path]::Combine($ThemesPath, 'colors', "$theme.jsonc"); Entries = $colorEntries[$theme]; Kind = 'Colors' } }
+    foreach ($theme in $themeNames) { $targets += @{ Path = [System.IO.Path]::Combine($ThemesPath, 'colors', "$theme.jsonc"); Entries = $colorEntries[$theme]; Kind = 'Colors' } }
     foreach ($target in $targets) {
         $changed = $false
-        foreach ($section in 'names', 'extensions') {
+        foreach ($section in ($target.Entries.Keys | Sort-Object)) {
             $entries = $target.Entries[$section]
             if ($entries.Count -eq 0) { continue }
-            & $SetThemeEntryPath -Path $target.Path -Section "files.$section" -Entries $entries
+            & $SetThemeEntryPath -Path $target.Path -Section $section -Entries $entries
             $written.($target.Kind) += $entries.Count
             $changed = $true
         }
@@ -505,4 +677,4 @@ function Invoke-DeviconsApply {
     $written
 }
 
-Export-ModuleMember -Function Confirm-DeviconsData, Read-DeviconsFile, Get-NerdGlyphIndex, Select-GlyphName, Get-ContrastWithWhite, ConvertTo-Hsl, ConvertTo-LightColor, ConvertTo-DraculaColor, Get-DeviconsComparison, Write-DeviconsReport, Invoke-DeviconsApply
+Export-ModuleMember -Function Confirm-DeviconsData, Read-DeviconsFile, Get-NerdGlyphIndex, Select-GlyphName, Get-ContrastWithWhite, Get-ContrastRatio, ConvertTo-Hsl, ConvertTo-LightColor, ConvertTo-DarkColor, ConvertTo-DraculaColor, Get-DeviconsComparison, Write-DeviconsReport, Invoke-DeviconsApply

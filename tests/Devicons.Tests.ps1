@@ -89,6 +89,13 @@ Describe 'Read-DeviconsFile' {
         $prettier.Group | Should -Be 'PrettierConfig'
     }
 
+    It 'refuses a file with entries it cannot read' {
+        $path = Join-Path $world.Root 'changed-format.lua'
+        $text = [System.IO.File]::ReadAllText((Join-Path $world.Vendor 'icons_by_filename.lua')).Replace('}', ', extra = true }')
+        [System.IO.File]::WriteAllText($path, $text + "`n  [`"new`"] = { name = `"New`", icon = `"x`", color = `"#FFFFFF`" },")
+        { Read-DeviconsFile -Path $path } | Should -Throw '*could not read 6 of 6 entries*'
+    }
+
     It 'adds the dot to extensions, including compound ones' {
         $keys = @(Read-DeviconsFile -Path (Join-Path $world.Vendor 'icons_by_file_extension.lua') -Extension).Key
         $keys | Should -Contain '.env'
@@ -147,6 +154,27 @@ Describe 'ConvertTo-LightColor' {
     }
 }
 
+Describe 'ConvertTo-DarkColor' {
+    It 'keeps <Hex>, which already has 3:1 contrast on 1E1E1E' -ForEach @(@{ Hex = 'F69A1B' }, @{ Hex = '6D8086' }) {
+        ConvertTo-DarkColor -Hex $Hex | Should -BeExactly $Hex
+    }
+
+    It 'lightens <Hex> to at least 3:1 on 1E1E1E, keeping its hue' -ForEach @(@{ Hex = '7A0D21' }, @{ Hex = '3B1342' }, @{ Hex = '2F2F2F' }, @{ Hex = '000000' }) {
+        $dark = ConvertTo-DarkColor -Hex $Hex
+        Get-ContrastRatio -Hex $dark -Background '1E1E1E' | Should -BeGreaterOrEqual 3
+        $dark | Should -Match '^[0-9A-F]{6}$'
+        if ((ConvertTo-Hsl -Hex $Hex)[1] -gt 0) {
+            [Math]::Abs((ConvertTo-Hsl -Hex $dark)[0] - (ConvertTo-Hsl -Hex $Hex)[0]) | Should -BeLessOrEqual 3
+        }
+    }
+
+    It 'measures contrast like WCAG' {
+        Get-ContrastRatio -Hex '000000' -Background 'FFFFFF' | Should -Be 21
+        Get-ContrastRatio -Hex 'FFFFFF' -Background '000000' | Should -Be 21
+        Get-ContrastRatio -Hex '#777777' -Background '777777' | Should -Be 1
+    }
+}
+
 Describe 'ConvertTo-DraculaColor' {
     It 'maps <Hex> to <Expected>' -ForEach @(
         @{ Hex = 'E44D26'; Expected = 'FF5555' }
@@ -173,6 +201,12 @@ Describe 'Get-DeviconsComparison' {
         $comparison = Get-DeviconsComparison -VendorPath $world.Vendor -GlyphNamesPath $world.GlyphNames -ThemesPath $world.Themes
     }
 
+    It 'lists every reference entry with a Nerd Fonts name' {
+        @($comparison.Reference).Count | Should -Be 8
+        ($comparison.Reference | Where-Object Key -EQ '.zig').Glyph | Should -BeExactly 'nf-linux-l'
+        ($comparison.Reference | Where-Object Key -EQ 'go.mod').Color | Should -BeExactly '00ADD8'
+    }
+
     It 'returns the reference commit' {
         $comparison.Commit | Should -Be 'abc123'
     }
@@ -195,6 +229,18 @@ Describe 'Get-DeviconsComparison' {
     It 'leaves out entries whose glyph is the same code point, even under another name' {
         $comparison.New.Key + $comparison.Different.Key | Should -Not -Contain 'go.mod'
         $comparison.New.Key + $comparison.Different.Key | Should -Not -Contain '.go'
+    }
+
+    It 'names the existing rule that a new entry takes files from' {
+        $other = New-FakeWorld 'compare-replaces'
+        & (Join-Path $script:RepoRoot 'tools' 'Set-ThemeEntry.ps1') -Path (Join-Path $other.Themes 'icons' 'default.jsonc') -Section files.extensions -Entries @{ '.json' = 'nf-dev-a'; '.ts' = 'nf-dev-a' }
+        $result = Get-DeviconsComparison -VendorPath $other.Vendor -GlyphNamesPath $other.GlyphNames -ThemesPath $other.Themes
+        ($result.New | Where-Object Key -EQ '.prettierrc.json').Replaces | Should -BeExactly 'files.extensions[.json]'
+        ($result.New | Where-Object Key -EQ '.d.ts').Replaces | Should -BeExactly 'files.extensions[.ts]'
+        ($result.New | Where-Object Key -EQ '.zig').Replaces | Should -BeNullOrEmpty
+        $path = Join-Path $other.Root 'report.md'
+        Write-DeviconsReport -Comparison $result -Path $path
+        [System.IO.File]::ReadAllText($path) | Should -Match ([regex]::Escape('| files.extensions[.ts] |'))
     }
 
     It 'lists glyphs that Nerd Fonts does not name' {
@@ -226,7 +272,7 @@ Describe 'Write-DeviconsReport' {
         Write-DeviconsReport -Comparison $comparison -Path $path
         $text = [System.IO.File]::ReadAllText($path)
         $text | Should -Match '(?m)^### PrettierConfig$'
-        $text | Should -Match ([regex]::Escape('| names | .prettierrc.json | nf-dev-aaa | 4285F4 |'))
+        $text | Should -Match ([regex]::Escape(('| names | .prettierrc.json | nf-dev-aaa | 4285F4 | {0} | {1} | {2} |' -f (ConvertTo-DarkColor -Hex '4285F4'), (ConvertTo-LightColor -Hex '4285F4'), (ConvertTo-DraculaColor -Hex '4285F4'))))
         $text | Should -Match ([regex]::Escape('| names | Dockerfile | nf-dev-aaa | nf-md-bbb |'))
         $text | Should -Match 'weird'
         $text | Should -Match ([regex]::Escape('| names | nocolor | default, light, dracula |'))
@@ -245,7 +291,7 @@ Describe 'Invoke-DeviconsApply' {
             Invoke-DeviconsApply -Comparison $comparison -ThemesPath $World.Themes -DecisionsPath $path
         }
         function Read-Theme($World, [string]$Relative) { Read-JsoncFile -Path (Join-Path $World.Themes $Relative) }
-        $decisions = '{ "exclude": [ "group:Env", ".d.ts" ], "adopt": [ "dockerfile" ], "colors": { "nocolor": "#123456" } }'
+        $decisions = '{ "exclude": [ "group:Env", ".d.ts" ], "adopt": [ "dockerfile" ], "colors": { "nocolor": "#123456" }, "folders": { ".git": "#6D8086" }, "aliases": { "zigfile": ".zig" } }'
     }
 
     It 'adds the new entries that are not excluded, with derived colors' {
@@ -277,7 +323,8 @@ Describe 'Invoke-DeviconsApply' {
     It 'fills missing colors from the reference or from the decisions file' {
         $world = New-FakeWorld 'apply-colors'
         Invoke-Apply $world $decisions | Out-Null
-        (Read-Theme $world 'colors/default.jsonc')['files']['names']['nocolor'] | Should -BeExactly '123456'
+        (Read-Theme $world 'colors/default.jsonc')['files']['names']['nocolor'] | Should -BeExactly (ConvertTo-DarkColor -Hex '123456')
+        (ConvertTo-DarkColor -Hex '123456') | Should -Not -Be '123456'
         (Read-Theme $world 'colors/light.jsonc')['files']['names']['nocolor'] | Should -BeExactly '123456'
         (Read-Theme $world 'colors/dracula.jsonc')['files']['names']['nocolor'] | Should -BeExactly (ConvertTo-DraculaColor -Hex '123456')
         (Read-Theme $world 'colors/light.jsonc')['files']['names']['dockerfile'] | Should -BeExactly (ConvertTo-LightColor -Hex '458EE6')
@@ -309,6 +356,63 @@ Describe 'Invoke-DeviconsApply' {
         $second = Invoke-Apply $world $decisions
         $second.Icons + $second.Colors | Should -Be 0
         Get-TreeSnapshot -Path $world.Themes | Should -Be $before
+    }
+
+    It 'colors folders from the decisions file, keeping existing folder colors' {
+        $world = New-FakeWorld 'apply-folders'
+        & (Join-Path $script:RepoRoot 'tools' 'Set-ThemeEntry.ps1') -Path (Join-Path $world.Themes 'colors' 'dracula.jsonc') -Section directories.names -Entries @{ '.GIT' = 'FF79C6' }
+        Invoke-Apply $world $decisions | Out-Null
+        (Read-Theme $world 'colors/default.jsonc')['directories']['names']['.git'] | Should -BeExactly (ConvertTo-DarkColor -Hex '6D8086')
+        (Read-Theme $world 'colors/light.jsonc')['directories']['names']['.git'] | Should -BeExactly (ConvertTo-LightColor -Hex '6D8086')
+        (Read-Theme $world 'colors/dracula.jsonc')['directories']['names']['.GIT'] | Should -BeExactly 'FF79C6'
+    }
+
+    It 'maps an alias file name like its reference entry' {
+        $world = New-FakeWorld 'apply-aliases'
+        Invoke-Apply $world $decisions | Out-Null
+        (Read-Theme $world 'icons/default.jsonc')['files']['names']['zigfile'] | Should -BeExactly 'nf-linux-l'
+        (Read-Theme $world 'colors/default.jsonc')['files']['names']['zigfile'] | Should -BeExactly (ConvertTo-DarkColor -Hex 'F69A1B')
+        (Read-Theme $world 'colors/dracula.jsonc')['files']['names']['zigfile'] | Should -BeExactly (ConvertTo-DraculaColor -Hex 'F69A1B')
+    }
+
+    It 'refuses <Case>' -ForEach @(
+        @{ Case = 'an unknown setting'; Decisions = '{ "adpot": [] }'; Message = '*unknown setting "adpot"*' }
+        @{ Case = 'a color that is not RRGGBB'; Decisions = '{ "colors": { "nocolor": "blue" } }'; Message = '*"blue" is not a color*' }
+        @{ Case = 'a folder color that is not RRGGBB'; Decisions = '{ "folders": { ".git": "#12345" } }'; Message = '*"#12345" is not a color*' }
+        @{ Case = 'a list where a list is expected'; Decisions = '{ "exclude": ".env" }'; Message = '*"exclude" must be a list*' }
+        @{ Case = 'invalid JSONC'; Decisions = '{ "exclude": [ }'; Message = '*decisions*' }
+    ) {
+        $world = New-FakeWorld "apply-refuse-$([guid]::NewGuid())"
+        $before = Get-TreeSnapshot -Path $world.Themes
+        { Invoke-Apply $world $Decisions } | Should -Throw $Message
+        Get-TreeSnapshot -Path $world.Themes | Should -Be $before
+    }
+
+    It 'refuses a missing decisions file' {
+        $world = New-FakeWorld 'apply-missing'
+        $comparison = Get-DeviconsComparison -VendorPath $world.Vendor -GlyphNamesPath $world.GlyphNames -ThemesPath $world.Themes
+        { Invoke-DeviconsApply -Comparison $comparison -ThemesPath $world.Themes -DecisionsPath (Join-Path $world.Root 'nothere.jsonc') } | Should -Throw '*decisions file not found*'
+    }
+
+    It 'warns about decisions that match nothing' {
+        $world = New-FakeWorld 'apply-warn'
+        $odd = '{ "exclude": [ ".nothere", "group:Nope" ], "adopt": [ ".zig" ], "colors": { "nothere": "#123456" }, "folders": { "nofolder": "#123456" }, "aliases": { "x": ".nope" } }'
+        $warnings = @(Invoke-Apply $world $odd 3>&1 | Where-Object { $_ -is [System.Management.Automation.WarningRecord] })
+        $warnings.Count | Should -Be 6
+        ($warnings.Message -join "`n") | Should -Match '"\.nothere"'
+        ($warnings.Message -join "`n") | Should -Match 'group:Nope'
+    }
+}
+
+Describe 'committed themes' {
+    It 'have every entry that tools/devicons-decisions.jsonc approves' {
+        $themes = Join-Path $TestDrive 'committed-themes'
+        Copy-Item -LiteralPath (Join-Path $script:RepoRoot 'themes') -Destination $themes -Recurse
+        $comparison = Get-DeviconsComparison -VendorPath (Join-Path $script:RepoRoot 'vendor' 'nvim-web-devicons') -GlyphNamesPath (Join-Path $script:RepoRoot 'vendor' 'nerd-fonts' 'glyphnames.json') -ThemesPath $themes
+        $written = Invoke-DeviconsApply -Comparison $comparison -ThemesPath $themes -DecisionsPath (Join-Path $script:RepoRoot 'tools' 'devicons-decisions.jsonc') -WarningVariable warnings
+        $written.Icons + $written.Colors | Should -Be 0
+        $warnings | Should -BeNullOrEmpty
+        $comparison.MissingColor | Should -BeNullOrEmpty
     }
 }
 

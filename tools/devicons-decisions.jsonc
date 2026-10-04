@@ -43,5 +43,16 @@
     "biome.jsonc": "#6D8086",
     "deno.json": "#6D8086",
     "deno.jsonc": "#6D8086"
+  },
+  // Colors for folders with an icon and without a color (the reference has no folders).
+  "folders": {
+    ".codex": "#6D8086",
+    ".cursor": "#6D8086",
+    ".gemini": "#6D8086",
+    ".kiro": "#6D8086"
+  },
+  // File names mapped like a reference key; config.ru is only an extension in the reference.
+  "aliases": {
+    "config.ru": ".config.ru"
   }
 }
