@@ -70,11 +70,18 @@ Describe 'Get-FontLocation' {
         } elseif ($IsMacOS) {
             @('/Library/Fonts')
         } else {
-            @('/usr/share/fonts', '/usr/local/share/fonts', (Join-Path $HOME '.fonts'))
+            @('/usr/share/fonts', '/usr/local/share/fonts')
         }
         $location = Get-FontLocation
         $location.SystemDirectory | Should -BeOfType [string]
         @($location.SystemDirectory) | Should -Be $expected
+    }
+
+    It 'returns the per-user folders to scan, starting with the install folder' {
+        $location = Get-FontLocation
+        $expected = if ($IsLinux) { @($location.Directory, (Join-Path $HOME '.fonts')) } else { @($location.Directory) }
+        $location.UserDirectory | Should -BeOfType [string]
+        @($location.UserDirectory) | Should -Be $expected
     }
 
     It 'honors XDG_DATA_HOME on Linux' -Skip:(-not $IsLinux) {
@@ -161,6 +168,18 @@ Describe 'Get-NerdFontInstallation' {
     It 'returns nothing for a missing folder' {
         Get-NerdFontInstallation -FontDirectory (Join-Path $TestDrive 'nope') -PackageMap $map -MinimumVersion '3.5.1' | Should -BeNullOrEmpty
     }
+
+    It 'groups a family spread over several folders and skips missing ones' {
+        $first = Join-Path $TestDrive 'multi-a'
+        $second = Join-Path $TestDrive 'multi-b'
+        New-TestFont -Path (Join-Path $first 'JetBrainsMonoNerdFontMono-Regular.ttf') | Out-Null
+        New-TestFont -Path (Join-Path $second 'JetBrainsMonoNerdFont-Bold.ttf') -Version 'Version 2.304;Nerd Fonts 3.0.2' | Out-Null
+        $found = @(Get-NerdFontInstallation -FontDirectory $first, (Join-Path $TestDrive 'missing'), $second -PackageMap $map -MinimumVersion '3.5.1')
+        $found.Count | Should -Be 1
+        $found[0].Files.Count | Should -Be 2
+        $found[0].Version | Should -Be ([version]'3.0.2')
+        $found[0].IsOutdated | Should -BeTrue
+    }
 }
 
 Describe 'Save-NerdFontRelease' {
@@ -212,6 +231,11 @@ Describe 'Invoke-FontCacheRefresh' {
     It 'returns whether fc-cache ran' {
         $expected = [bool](Get-Command -Name 'fc-cache' -CommandType Application -ErrorAction Ignore)
         Invoke-FontCacheRefresh -Directory $TestDrive | Should -Be $expected
+    }
+
+    It 'refreshes several folders and skips missing ones' {
+        $expected = [bool](Get-Command -Name 'fc-cache' -CommandType Application -ErrorAction Ignore)
+        Invoke-FontCacheRefresh -Directory $TestDrive, (Join-Path $TestDrive 'missing') | Should -Be $expected
     }
 }
 
@@ -341,6 +365,17 @@ Describe 'Remove-StaleFontFile' {
         $result.Removed | Should -Be 1
         $result.Pending | Should -Be 0
         @(Get-ChildItem -LiteralPath $dir -Filter '*.old-nerdfont').Count | Should -Be 0
+    }
+
+    It 'also cleans renamed files in subfolders' {
+        $root = Join-Path $TestDrive "stale-root-$([guid]::NewGuid())"
+        [System.IO.Directory]::CreateDirectory($root) | Out-Null
+        $sub = New-StaleCase -RenamedAt $now.AddHours(-2)
+        Move-Item -LiteralPath $sub -Destination (Join-Path $root 'JetBrainsMono')
+        $result = Remove-StaleFontFile -FontDirectory $root -BootTime $now.AddHours(-1)
+        $result.Removed | Should -Be 1
+        @(Get-ChildItem -LiteralPath $root -Recurse -Filter '*.old-nerdfont').Count | Should -Be 0
+        Join-Path $root 'JetBrainsMono' 'A.ttf' | Should -Exist
     }
 
     It 'keeps every renamed copy until Windows restarts' {

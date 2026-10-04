@@ -1,8 +1,9 @@
 function Get-NerdFontInstallation {
     <#
     .SYNOPSIS
-        Groups the Nerd Font files in a folder by release package and reports which ones are outdated.
+        Groups the Nerd Font files in one or more folders by release package and reports which ones are outdated.
     .DESCRIPTION
+        A family spread over several folders is reported once, with all its files. Missing folders are skipped.
         The package of a file is found from the part of its name before "NerdFont", using the longest matching
         prefix in -PackageMap (JetBrainsMonoNL and JetBrainsMono both belong to JetBrainsMono). Files without a
         readable Nerd Fonts version count as outdated. Nerd Fonts 2.x files (named like "Hack Regular Nerd Font
@@ -12,7 +13,7 @@ function Get-NerdFontInstallation {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
-        [string]$FontDirectory,
+        [string[]]$FontDirectory,
 
         [Parameter(Mandatory)]
         [System.Collections.IDictionary]$PackageMap,
@@ -21,11 +22,12 @@ function Get-NerdFontInstallation {
         [version]$MinimumVersion
     )
 
-    if (-not [System.IO.Directory]::Exists($FontDirectory)) { return }
+    $existing = @($FontDirectory | Where-Object { $_ -and [System.IO.Directory]::Exists($_) })
+    if ($existing.Count -eq 0) { return }
     $ignoreCase = [System.StringComparison]::OrdinalIgnoreCase
     $prefixes = @($PackageMap.Keys | Sort-Object -Property Length -Descending)
     $families = [ordered]@{}
-    $fonts = @(Get-ChildItem -LiteralPath $FontDirectory -Recurse -File -ErrorAction Ignore |
+    $fonts = @(Get-ChildItem -LiteralPath $existing -Recurse -File -ErrorAction Ignore |
         Where-Object { $_.Extension -in '.ttf', '.otf' } |
         Sort-Object -Property FullName)
     $files = $fonts | Where-Object { $_.Name.Contains('NerdFont', $ignoreCase) }

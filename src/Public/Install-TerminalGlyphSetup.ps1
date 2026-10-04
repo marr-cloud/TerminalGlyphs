@@ -94,7 +94,10 @@ function Install-TerminalGlyphSetup {
                 }
             }
 
-            $installed = @(Get-NerdFontInstallation -FontDirectory $location.Directory -PackageMap $packageMap -MinimumVersion $version)
+            # Per-user folders are updated in place (Directory first; on Linux also ~/.fonts).
+            $userDirectories = @($location.UserDirectory | Where-Object { $_ })
+            if ($userDirectories.Count -eq 0) { $userDirectories = @($location.Directory) }
+            $installed = @(Get-NerdFontInstallation -FontDirectory $userDirectories -PackageMap $packageMap -MinimumVersion $version)
             # Fonts installed for all users are only reported: changing them needs admin rights.
             $system = @(foreach ($systemDirectory in @($location.SystemDirectory | Where-Object { $_ })) {
                     Get-NerdFontInstallation -FontDirectory $systemDirectory -PackageMap $packageMap -MinimumVersion $version
@@ -173,7 +176,7 @@ function Install-TerminalGlyphSetup {
                     & $newStep $stepName 'Error' $_.Exception.Message
                 }
             }
-            if ($changed -gt 0 -and $location.Platform -eq 'Linux' -and -not (Invoke-FontCacheRefresh -Directory $location.Directory)) {
+            if ($changed -gt 0 -and $location.Platform -eq 'Linux' -and -not (Invoke-FontCacheRefresh -Directory $userDirectories)) {
                 Write-Warning -Message 'TerminalGlyphs: fc-cache was not found or failed; sign out and back in to see the new fonts.'
             }
         } catch {

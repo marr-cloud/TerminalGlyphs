@@ -57,6 +57,15 @@ Describe 'Install-TerminalGlyphSetup' {
         $result.Notes | Should -Contain 'Open a new terminal to load TerminalGlyphs.'
     }
 
+    It 'scans and refreshes every per-user folder, such as ~/.fonts on Linux' {
+        $dotFonts = Join-Path $TestDrive '.fonts'
+        Mock -ModuleName TerminalGlyphs Get-FontLocation { [pscustomobject]@{ Platform = 'Linux'; Directory = $fontDir; UserDirectory = [string[]]@($fontDir, $dotFonts); SystemDirectory = [string[]]@() } }
+        Invoke-Setup | Out-Null
+        Should -Invoke -ModuleName TerminalGlyphs Get-NerdFontInstallation -Times 1 -Exactly -ParameterFilter { @($FontDirectory).Count -eq 2 -and $FontDirectory -contains $dotFonts }
+        Should -Invoke -ModuleName TerminalGlyphs Invoke-FontCacheRefresh -Times 1 -Exactly -ParameterFilter { $Directory -contains $dotFonts -and $Directory -contains $fontDir }
+        Should -Invoke -ModuleName TerminalGlyphs Install-NerdFontFile -Times 1 -Exactly -ParameterFilter { $TargetDirectory -eq (Join-Path $fontDir 'NerdFonts' 'JetBrainsMono') }
+    }
+
     It 'checks each package against the checksum shipped with the module' {
         Invoke-Setup | Out-Null
         Should -Invoke -ModuleName TerminalGlyphs Save-NerdFontRelease -Times 1 -Exactly -ParameterFilter { $ExpectedHash -eq '04d5e8f903693f9dd13e16f867e994834e681eb3c72c0d337a770dcda09010cf' }

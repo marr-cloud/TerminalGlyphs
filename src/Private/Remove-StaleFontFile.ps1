@@ -19,7 +19,7 @@ function Remove-StaleFontFile {
     if (-not [System.IO.Directory]::Exists($FontDirectory)) { return $result }
     $boot = $BootTime.ToUniversalTime()
     $styles = [System.Globalization.DateTimeStyles]::AssumeUniversal -bor [System.Globalization.DateTimeStyles]::AdjustToUniversal
-    $files = Get-ChildItem -LiteralPath $FontDirectory -Filter '*.old-nerdfont' -File -ErrorAction Ignore | Sort-Object -Property Name -Descending
+    $files = Get-ChildItem -LiteralPath $FontDirectory -Filter '*.old-nerdfont' -File -Recurse -ErrorAction Ignore | Sort-Object -Property Name -Descending
     foreach ($file in $files) {
         if ($file.Name -notmatch '^(?<original>.+)\.(?<stamp>\d{14})\.old-nerdfont$') { continue }
         $originalName = $Matches['original']
