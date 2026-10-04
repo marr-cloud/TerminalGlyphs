@@ -65,6 +65,7 @@ carga). El PR #120 del autor (sin mergear desde 2023) también eliminaba la rees
 | Implementación | Módulo script (PowerShell puro); sin C#. |
 | Nerd Fonts | Mínimo 3.5.1; se valida contra `glyphnames.json` v3.5.1 fijado en el repo. |
 | API pública v0.1 | `Format-TerminalGlyph`, `Get-TerminalGlyph`, `Show-TerminalGlyphTheme`, `Find-NerdGlyph`, `Update-TerminalGlyphConfig`. |
+| API pública v0.2 | Añade `Install-TerminalGlyphSetup` (ver `2026-10-04-setup-command-design.md`). |
 | Licencia | MIT; aviso de copyright del upstream conservado. |
 | Publicación | GitHub (`marr-cloud/TerminalGlyphs`) primero; Gallery preparada con un workflow manual. Ningún push ni publicación sin confirmación explícita. |
 | Tests | Pester 5.9.x (`[5.9,6.0)`) + PSScriptAnalyzer 1.25. |

@@ -1,6 +1,7 @@
 BeforeAll {
     . (Join-Path $PSScriptRoot 'TestHelpers.ps1')
     $buildScript = Join-Path $script:RepoRoot 'build.ps1'
+    $moduleVersion = (Import-PowerShellDataFile -Path (Join-Path $script:RepoRoot 'src' 'TerminalGlyphs.psd1')).ModuleVersion
     $manifestPath = Get-BuiltManifestPath
     $moduleDir = Split-Path -Parent $manifestPath
     $data = Get-Content -LiteralPath (Join-Path $moduleDir 'TerminalGlyphs.data.json') -Raw | ConvertFrom-Json -AsHashtable
@@ -111,7 +112,7 @@ Describe 'build validation' {
         $themes = New-ThemeFixture '{ "name": "default", "files": { "names": { "go.mod": "nf-dev-go" } } }' '{ "name": "default", "files": { "extensions": { ".go": "#00add8" } } }'
         $out = Join-Path $TestDrive 'ok'
         & $buildScript -ThemesPath $themes -OutputPath $out *> $null
-        $built = Get-Content -LiteralPath (Join-Path $out 'TerminalGlyphs' '0.1.0' 'TerminalGlyphs.data.json') -Raw | ConvertFrom-Json -AsHashtable
+        $built = Get-Content -LiteralPath (Join-Path $out 'TerminalGlyphs' $moduleVersion 'TerminalGlyphs.data.json') -Raw | ConvertFrom-Json -AsHashtable
         $built['colorThemes']['default']['files']['extensions']['.go'] | Should -BeExactly '00ADD8'
     }
 

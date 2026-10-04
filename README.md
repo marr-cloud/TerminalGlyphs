@@ -17,25 +17,27 @@ been maintained since 2023. It keeps the Terminal-Icons mappings and colors and 
 
 - PowerShell 7.4 or later.
 - A Nerd Font **3.5.1 or later** in your terminal. Several icons (Cloudflare, Astro, Bun, pnpm, Vite, Terraform,
-  Claude) do not exist in older versions, and some older code points draw different logos. On Windows you can update
-  the fonts you already have with `./tools/Install-NerdFont.ps1 -Family JetBrainsMono, FiraCode`.
+  Claude) do not exist in older versions, and some older code points draw different logos. `Install-TerminalGlyphSetup`
+  installs or updates it for you.
 
-## Install from source
-
-```powershell
-git clone https://github.com/marr-cloud/TerminalGlyphs.git
-cd TerminalGlyphs
-./build.ps1
-$target = Join-Path ($env:PSModulePath -split [IO.Path]::PathSeparator)[0] 'TerminalGlyphs'
-New-Item -ItemType Directory -Force -Path $target | Out-Null
-Copy-Item -Recurse -Force -Path ./out/TerminalGlyphs/* -Destination $target
-```
-
-Then, in your profile, replace `Import-Module Terminal-Icons` with:
+## Install
 
 ```powershell
-Import-Module TerminalGlyphs
+Install-PSResource TerminalGlyphs
+Import-Module TerminalGlyphs; Install-TerminalGlyphSetup
 ```
+
+`Install-TerminalGlyphSetup`:
+
+- Updates the Nerd Fonts in your user font folder to 3.5.1, or installs JetBrainsMono if you have none. Packages
+  are downloaded from the Nerd Fonts GitHub release and checked against its SHA-256 list. No admin rights needed.
+- Replaces `Import-Module Terminal-Icons` in your profile with `Import-Module TerminalGlyphs` (or adds it), keeping a
+  backup next to the profile.
+- Prints one result per step. Preview with `-WhatIf`; use `-Family FiraCode` for other fonts, `-SkipFont` or
+  `-SkipProfile` to skip a step.
+
+Then choose the Nerd Font in your terminal settings (the command tells you its name) and open a new terminal.
+On Windows, fonts that were in use are replaced after you **Restart Windows**; until then, apps keep the old version.
 
 ## Configuration
 
@@ -67,6 +69,7 @@ with a single warning; the rest still applies. Run `Update-TerminalGlyphConfig` 
 
 | Command | Purpose |
 |---|---|
+| `Install-TerminalGlyphSetup` | Install or update Nerd Fonts and add TerminalGlyphs to your profile. |
 | `Get-TerminalGlyph <path>` | Which icon and color a file gets, and which rule matched. |
 | `Show-TerminalGlyphTheme` | Preview every mapping of the active themes. |
 | `Find-NerdGlyph <name>` | Search Nerd Fonts glyph names for your config. |
@@ -74,6 +77,19 @@ with a single warning; the rest still applies. Run `Update-TerminalGlyphConfig` 
 | `Format-TerminalGlyph` | Used by the `Get-ChildItem` view. |
 
 ## Development
+
+Install from source:
+
+```powershell
+git clone https://github.com/marr-cloud/TerminalGlyphs.git
+cd TerminalGlyphs
+./build.ps1
+$target = Join-Path ($env:PSModulePath -split [IO.Path]::PathSeparator)[0] 'TerminalGlyphs'
+New-Item -ItemType Directory -Force -Path $target | Out-Null
+Copy-Item -Recurse -Force -Path ./out/TerminalGlyphs/* -Destination $target
+```
+
+Run the tests:
 
 ```powershell
 Install-PSResource -Name Pester -Version '[5.9.0, 6.0.0)' -Scope CurrentUser -TrustRepository
