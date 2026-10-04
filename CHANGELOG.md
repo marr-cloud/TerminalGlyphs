@@ -6,6 +6,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- 165 file names and 346 extensions with icons and colors from nvim-web-devicons (for example `.prettierrc`,
+  `.editorconfig`, `.env`, `eslint.config.js`, `.graphql`, `.nix`, `.zig`, `.d.ts`, `.test.ts`), plus
+  `config.ru`. Colors are made readable on dark backgrounds (default), on white (light) and mapped to the Dracula
+  palette.
+- Colors for the `.codex`, `.cursor`, `.gemini` and `.kiro` folders.
+- `tools/Import-DeviconsMapping.ps1` to report and apply mappings from the vendored nvim-web-devicons data.
+
+### Changed
+
+- 19 file icons now use the nvim-web-devicons glyph and color: PowerShell (`.ps1`, `.psd1`, `.psm1`), YAML, npm
+  (`package.json`, `package-lock.json`), `tsconfig.json`, Jupyter, Photoshop, `.vsix`, `.csproj`, clang-format and
+  clang-tidy, subtitles (`.ass`, `.srt`, `.lrc`) and `code_of_conduct.md`.
+
+### Fixed
+
+- Every file icon has a color in the default, light and Dracula themes.
+
 ## [0.2.2] - 2026-10-04
 
 ### Changed

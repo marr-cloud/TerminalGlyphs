@@ -1,0 +1,58 @@
+// Decisions for tools/Import-DeviconsMapping.ps1 -Apply (see docs/mappings/devicons-0.3.0.md).
+{
+  // Keys (".foo", "Foofile") or groups ("group:<Name>") that are not imported.
+  "exclude": [],
+  // Existing keys whose glyph and color are replaced by the reference's.
+  "adopt": [
+    ".ps1",
+    ".psd1",
+    ".psm1",
+    ".yaml",
+    ".yml",
+    "package.json",
+    "package-lock.json",
+    "tsconfig.json",
+    ".ipynb",
+    ".psd",
+    ".psb",
+    ".vsix",
+    ".csproj",
+    ".clang-format",
+    ".clang-tidy",
+    ".ass",
+    ".srt",
+    ".lrc",
+    "code_of_conduct.md"
+  ],
+  // Colors for icons without a color that the reference does not cover.
+  "colors": {
+    ".tf.json": "#844FBA",
+    ".tfvars.json": "#844FBA",
+    ".auto.tfvars.json": "#844FBA",
+    "AGENTS.md": "#6D8086",
+    "GEMINI.md": "#6D8086",
+    "llms.txt": "#6D8086",
+    ".mcp.json": "#6D8086",
+    ".cursorrules": "#6D8086",
+    "copilot-instructions.md": "#6D8086",
+    "mise.toml": "#6D8086",
+    ".mise.toml": "#6D8086",
+    "mise.local.toml": "#6D8086",
+    ".tool-versions": "#6D8086",
+    "biome.json": "#6D8086",
+    "biome.jsonc": "#6D8086",
+    "deno.json": "#6D8086",
+    "deno.jsonc": "#6D8086"
+  },
+  // Colors for folders with an icon and without a color (the reference has no folders).
+  "folders": {
+    ".codex": "#6D8086",
+    ".cursor": "#6D8086",
+    ".gemini": "#6D8086",
+    ".kiro": "#6D8086"
+  },
+  // File names mapped like a reference key; config.ru is only an extension in the reference.
+  "aliases": {
+    "config.ru": ".config.ru"
+  }
+}

@@ -10,7 +10,8 @@ been maintained since 2023. It keeps the Terminal-Icons mappings and colors and 
   Warp) then fail with `Import-Clixml: ... dictionary entry ...`. TerminalGlyphs never writes to disk.
 - **Fast imports.** Data loads on the first listing, not on import.
 - **Icons for current tooling**: Go, Rust, Cloudflare/wrangler, Terraform, CloudFormation/SAM/CDK, mise, uv, pnpm,
-  Bun, Astro, Vite/VitePress/Vitest, Docker, Claude, Kiro and other AI tools, Biome, Deno and just.
+  Bun, Astro, Vite/VitePress/Vitest, Docker, Claude, Kiro and other AI tools, Biome, Deno and just, plus hundreds of
+  file names and extensions imported from [nvim-web-devicons](https://github.com/nvim-tree/nvim-web-devicons).
 - **A JSONC config** with a JSON Schema, instead of cmdlets that store themes in `%APPDATA%`.
 
 ## Requirements
