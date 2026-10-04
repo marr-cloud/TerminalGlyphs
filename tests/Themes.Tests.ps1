@@ -110,8 +110,9 @@ Describe 'theme consistency' {
     }
 
     It 'gives every color in <Theme> at least 3:1 contrast on <Background>' -ForEach @(
-        @{ Theme = 'default'; Background = '1E1E1E'; Fix = 'ConvertTo-DarkColor' }
-        @{ Theme = 'light'; Background = 'FFFFFF'; Fix = 'ConvertTo-LightColor' }
+        @{ Theme = 'default'; Background = '1E1E1E'; Fix = { param($Hex) ConvertTo-DarkColor -Hex $Hex } }
+        @{ Theme = 'light'; Background = 'FFFFFF'; Fix = { param($Hex) ConvertTo-LightColor -Hex $Hex } }
+        @{ Theme = 'dracula'; Background = '282A36'; Fix = { param($Hex) ConvertTo-DarkColor -Hex $Hex -Background '282A36' } }
     ) {
         Import-Module (Join-Path $root 'tools' 'DeviconsMapping.psm1') -Force
         try {
@@ -124,7 +125,7 @@ Describe 'theme consistency' {
                     foreach ($entry in $entries) {
                         $checked++
                         if ((Get-ContrastRatio -Hex $entry.Value -Background $Background) -lt 3) {
-                            '{0}.{1}[{2}] {3}, use {4}' -f $kind, $section, $entry.Key, $entry.Value, (& $Fix -Hex $entry.Value)
+                            '{0}.{1}[{2}] {3}, use {4}' -f $kind, $section, $entry.Key, $entry.Value, (& $Fix $entry.Value)
                         }
                     }
                 }

@@ -256,16 +256,19 @@ function ConvertTo-LightColor {
 }
 
 function ConvertTo-DarkColor {
-    # The same color for the default theme, lightened (same hue and chroma) until it has 3:1 contrast on a dark
-    # terminal background (#1E1E1E).
+    # The same color for a dark theme, lightened (same hue and chroma) until it has 3:1 contrast on its background
+    # (the default theme assumes #1E1E1E).
     [OutputType([string])]
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
-        [string]$Hex
+        [string]$Hex,
+
+        [ValidatePattern('^#?[0-9A-Fa-f]{6}$')]
+        [string]$Background = '1E1E1E'
     )
 
-    Get-ContrastingColor -Hex $Hex -Background '1E1E1E' -Direction 1
+    Get-ContrastingColor -Hex $Hex -Background $Background.TrimStart('#') -Direction 1
 }
 
 function ConvertTo-DraculaColor {
