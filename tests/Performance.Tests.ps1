@@ -20,6 +20,6 @@ Describe 'performance' -Tag 'Performance' {
         $result = Invoke-IsolatedPwsh -Environment $childEnv -Command "Import-Module '$manifestPath'; (Measure-Command { Get-ChildItem -LiteralPath '$fixture' | Out-String }).TotalMilliseconds.ToString([cultureinfo]::InvariantCulture)"
         $firstListing = [double]::Parse($result.Output.Trim(), [cultureinfo]::InvariantCulture)
         Write-Host ("First Get-ChildItem (lazy initialization): {0:N1} ms" -f $firstListing)
-        $firstListing | Should -BeLessThan 2000
+        $firstListing | Should -BeLessThan 600
     }
 }

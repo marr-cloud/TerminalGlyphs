@@ -6,6 +6,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- The first listing of a session is faster (about 290 ms instead of 450 ms in 0.3.0, and below 0.2.2): the built-in
+  themes are loaded without a function call per entry, and the build stores the ANSI sequence of every theme color.
+
 ## [0.3.0] - 2026-10-04
 
 ### Added
