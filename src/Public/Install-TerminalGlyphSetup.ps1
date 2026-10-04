@@ -132,16 +132,20 @@ function Install-TerminalGlyphSetup {
                     $installedFiles = @()
                     if ($current) { $installedFiles = [string[]]$current.Files }
                     $result = Install-NerdFontFile -SourceFile $files -TargetDirectory $target -Platform $location.Platform -InstalledFile $installedFiles -UpdateOnly:([bool]$current)
-                    $changed += $result.Added.Count + $result.Replaced + $result.Renamed
+                    $fileChanges = $result.Added.Count + $result.Replaced + $result.Renamed
+                    $changed += $fileChanges
                     if ($result.Renamed -gt 0) { $restartNeeded = $true }
-                    if (-not $current -and -not $fontToChoose) {
+                    if (-not $current -and -not $fontToChoose -and $result.Added.Count -gt 0) {
                         $mono = $result.Added | Where-Object { [System.IO.Path]::GetFileName($_) -like '*NerdFontMono-Regular.*' } | Select-Object -First 1
                         $info = if ($mono) { Read-FontInfo -Path $mono }
                         $fontToChoose = if ($info -and $info.Family) { $info.Family } else { "$package Nerd Font Mono" }
                     }
                     $detail = '{0}: {1} added, {2} replaced' -f $action, $result.Added.Count, ($result.Replaced + $result.Renamed)
                     if ($result.Failed.Count -gt 0) {
-                        & $newStep $stepName 'Error' ('{0}; {1} file(s) in use could not be replaced, close the apps that use them and run again' -f $detail, $result.Failed.Count)
+                        $problem = if ($location.Platform -eq 'Windows') { 'in use could not be replaced, close the apps that use them and run again' } else { 'could not be replaced (check permissions)' }
+                        & $newStep $stepName 'Error' ('{0}; {1} file(s) {2}' -f $detail, $result.Failed.Count, $problem)
+                    } elseif ($current -and $fileChanges -eq 0) {
+                        & $newStep $stepName 'Error' ('{0}: none of the installed files are in the {1} package' -f $action, $package)
                     } else {
                         & $newStep $stepName 'OK' $detail
                     }
@@ -150,7 +154,7 @@ function Install-TerminalGlyphSetup {
                 }
             }
             if ($changed -gt 0 -and $location.Platform -eq 'Linux' -and -not (Invoke-FontCacheRefresh -Directory $location.Directory)) {
-                Write-Warning -Message 'TerminalGlyphs: fc-cache was not found; sign out and back in to see the new fonts.'
+                Write-Warning -Message 'TerminalGlyphs: fc-cache was not found or failed; sign out and back in to see the new fonts.'
             }
         } catch {
             & $newStep 'Fonts' 'Error' $_.Exception.Message
@@ -172,6 +176,6 @@ function Install-TerminalGlyphSetup {
     }
 
     if ($fontToChoose) { Write-Host "Set your terminal font to '$fontToChoose'." }
-    if ($restartNeeded) { Write-Host 'Restart Windows to finish replacing fonts that were in use; until then, apps keep the old version.' }
+    if ($restartNeeded) { Write-Host 'Restart Windows to finish replacing fonts that were in use; until then, apps keep the old version. Then run Install-TerminalGlyphSetup again to remove the replaced files.' }
     if ($profileChanged) { Write-Host 'Open a new terminal to load TerminalGlyphs.' }
 }

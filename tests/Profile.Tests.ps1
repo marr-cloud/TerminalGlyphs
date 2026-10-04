@@ -105,6 +105,42 @@ Describe 'Update-ProfileImport' {
         [System.IO.File]::ReadAllBytes($path) | Should -Be $expected
     }
 
+    It 'edits the target of a symbolic link and keeps the link' {
+        $real = New-Profile "Import-Module Terminal-Icons`n"
+        $link = Join-Path $TestDrive ([guid]::NewGuid()) 'profile.ps1'
+        [System.IO.Directory]::CreateDirectory((Split-Path -Parent $link)) | Out-Null
+        try {
+            [System.IO.File]::CreateSymbolicLink($link, $real) | Out-Null
+        } catch {
+            Set-ItResult -Skipped -Because "this account cannot create symbolic links: $($_.Exception.Message)"
+            return
+        }
+        $result = Update-ProfileImport -Path $link
+        $result.Status | Should -Be 'OK'
+        $result.Path | Should -Be $real
+        (Get-Item -LiteralPath $link).LinkTarget | Should -Be $real
+        [System.IO.File]::ReadAllText($real) | Should -BeExactly "Import-Module TerminalGlyphs`n"
+        (Get-Backup $real).Count | Should -Be 1
+        (Get-Backup $link).Count | Should -Be 0
+    }
+
+    It 'asks to remove a Terminal-Icons import it cannot replace (<Case>)' -ForEach @(
+        @{ Case = 'several modules'; Content = "Set-Alias ll ls`nImport-Module posh-git, Terminal-Icons`n"; Line = 2 }
+        @{ Case = 'a one-line block'; Content = "if (`$Host.Name -eq 'ConsoleHost') { Import-Module Terminal-Icons }`n"; Line = 1 }
+    ) {
+        $path = New-Profile $Content
+        $result = Update-ProfileImport -Path $path
+        $result.Status | Should -Be 'OK'
+        $result.Detail | Should -BeLike "Add Import-Module TerminalGlyphs*; Terminal-Icons is still imported on line $Line, remove it"
+        [System.IO.File]::ReadAllText($path) | Should -BeExactly "$($Content)# Added by TerminalGlyphs`nImport-Module -Name TerminalGlyphs`n"
+    }
+
+    It 'does not ask to remove Terminal-Icons for comments and similar names' {
+        $path = New-Profile "# Import-Module Terminal-Icons`nImport-Module Terminal-IconsExtra`nImport-Module Terminal-Icons`n"
+        $result = Update-ProfileImport -Path $path
+        $result.Detail | Should -Not -BeLike '*still imported*'
+    }
+
     It 'appends with the newline style of the file' {
         $path = New-Profile "Set-Alias ll ls`r`n"
         Update-ProfileImport -Path $path | Out-Null

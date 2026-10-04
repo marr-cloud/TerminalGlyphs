@@ -175,7 +175,43 @@ Describe 'Install-TerminalGlyphSetup' {
         Mock -ModuleName TerminalGlyphs Install-NerdFontFile { [pscustomobject]@{ Added = [System.Collections.Generic.List[string]]::new(); Replaced = 0; Renamed = $Renamed; Failed = [System.Collections.Generic.List[string]]::new() } }
         Mock -ModuleName TerminalGlyphs Remove-StaleFontFile { [pscustomobject]@{ Removed = 0; Restored = 0; Pending = $Pending } }
         $result = Invoke-Setup
-        $result.Notes | Should -Contain 'Restart Windows to finish replacing fonts that were in use; until then, apps keep the old version.'
+        $result.Notes | Should -Contain 'Restart Windows to finish replacing fonts that were in use; until then, apps keep the old version. Then run Install-TerminalGlyphSetup again to remove the replaced files.'
+    }
+
+    It 'does not name a font to choose when the install added no file' {
+        Mock -ModuleName TerminalGlyphs Install-NerdFontFile { [pscustomobject]@{ Added = [System.Collections.Generic.List[string]]::new(); Replaced = 1; Renamed = 0; Failed = [System.Collections.Generic.List[string]]::new() } }
+        $result = Invoke-Setup
+        (Get-Step $result 'Font JetBrainsMono').Status | Should -Be 'OK'
+        @($result.Notes | Where-Object { $_ -like 'Set your terminal font*' }).Count | Should -Be 0
+    }
+
+    It 'reports an update that matched none of the installed files as an error' {
+        Mock -ModuleName TerminalGlyphs Get-NerdFontInstallation { New-Family 'FiraCode' '3.0.2' $true }
+        Mock -ModuleName TerminalGlyphs Install-NerdFontFile { [pscustomobject]@{ Added = [System.Collections.Generic.List[string]]::new(); Replaced = 0; Renamed = 0; Failed = [System.Collections.Generic.List[string]]::new() } }
+        $step = Get-Step (Invoke-Setup) 'Font FiraCode'
+        $step.Status | Should -Be 'Error'
+        $step.Detail | Should -BeExactly 'Update from 3.0.2 to Nerd Fonts 3.5.1: none of the installed files are in the FiraCode package'
+    }
+
+    It 'explains files that could not be replaced on <Platform>' -ForEach @(
+        @{ Platform = 'Windows'; Expected = '*; 1 file(s) in use could not be replaced, close the apps that use them and run again' }
+        @{ Platform = 'Linux'; Expected = '*; 1 file(s) could not be replaced (check permissions)' }
+        @{ Platform = 'MacOS'; Expected = '*; 1 file(s) could not be replaced (check permissions)' }
+    ) {
+        Mock -ModuleName TerminalGlyphs Get-FontLocation { [pscustomobject]@{ Platform = $Platform; Directory = $fontDir } }
+        Mock -ModuleName TerminalGlyphs Get-NerdFontInstallation { New-Family 'FiraCode' '3.0.2' $true }
+        Mock -ModuleName TerminalGlyphs Install-NerdFontFile { [pscustomobject]@{ Added = [System.Collections.Generic.List[string]]::new(); Replaced = 1; Renamed = 0; Failed = [System.Collections.Generic.List[string]]@('FiraCodeNerdFont-Regular.ttf') } }
+        $step = Get-Step (Invoke-Setup) 'Font FiraCode'
+        $step.Status | Should -Be 'Error'
+        $step.Detail | Should -BeLike $Expected
+    }
+
+    It 'warns when fc-cache did not refresh the font cache' {
+        Mock -ModuleName TerminalGlyphs Get-FontLocation { [pscustomobject]@{ Platform = 'Linux'; Directory = $fontDir } }
+        Mock -ModuleName TerminalGlyphs Invoke-FontCacheRefresh { $false }
+        $warnings = @(Install-TerminalGlyphSetup -SkipProfile 3>&1 6>$null | Where-Object { $_ -is [System.Management.Automation.WarningRecord] })
+        $warnings.Count | Should -Be 1
+        "$($warnings[0])" | Should -BeLike '*fc-cache was not found or failed*'
     }
 
     It 'reports a cleanup error and still installs fonts' {

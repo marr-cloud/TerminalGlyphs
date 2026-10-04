@@ -5,7 +5,8 @@ function Update-ProfileImport {
     .DESCRIPTION
         Edits the first profile in -Path that already imports Terminal-Icons or TerminalGlyphs, or else the first
         profile in -Path. Keeps a backup, the file encoding and the line endings, and writes atomically. A file
-        without BOM keeps every byte outside the edit, whether it is UTF-8 or ANSI.
+        without BOM keeps every byte outside the edit, whether it is UTF-8 or ANSI. A symbolic link is followed to
+        its final target, which is edited in place of the link.
     #>
     [OutputType([pscustomobject])]
     [CmdletBinding(SupportsShouldProcess)]
@@ -26,6 +27,11 @@ function Update-ProfileImport {
             $target = $candidate
             break
         }
+    }
+
+    # Edit the final target of a symbolic link (a dotfiles repository, for example), so the link stays a link.
+    if ($null -ne [System.IO.FileInfo]::new($target).LinkTarget) {
+        $target = [System.IO.File]::ResolveLinkTarget($target, $true).FullName
     }
 
     # A new profile is UTF-8 without BOM. A file without BOM may be UTF-8 or ANSI (Windows PowerShell 5.1, old
@@ -76,6 +82,15 @@ function Update-ProfileImport {
     } catch {
         [System.IO.File]::Delete($temp)
         throw
+    }
+    # Imports the patterns cannot rewrite, such as "Import-Module posh-git, Terminal-Icons" or a one-line block.
+    $lines = $updated -split '\r?\n'
+    for ($index = 0; $index -lt $lines.Count; $index++) {
+        $line = $lines[$index].TrimStart()
+        if (-not $line.StartsWith('#') -and $line -match '(?i)(?<![\w-])Terminal-Icons(?![\w-])') {
+            $action += "; Terminal-Icons is still imported on line $($index + 1), remove it"
+            break
+        }
     }
     [pscustomobject]@{ Path = $target; Status = 'OK'; Detail = $action }
 }

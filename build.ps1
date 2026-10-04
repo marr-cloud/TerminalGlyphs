@@ -93,8 +93,10 @@ function Invoke-ModuleBuild {
         foreach ($entry in (Get-GlyphThemeEntry -Theme $theme)) { $used[$entry.Value] = $nerd.Glyphs[$entry.Value] }
     }
 
-    $moduleDir = [System.IO.Path]::GetFullPath([System.IO.Path]::Combine($OutputPath, 'TerminalGlyphs', $manifest.ModuleVersion))
-    if (Test-Path -LiteralPath $moduleDir) { Remove-Item -LiteralPath $moduleDir -Recurse -Force }
+    # Remove every earlier version, so out/ never holds stale module folders.
+    $moduleRoot = [System.IO.Path]::GetFullPath([System.IO.Path]::Combine($OutputPath, 'TerminalGlyphs'))
+    $moduleDir = [System.IO.Path]::Combine($moduleRoot, $manifest.ModuleVersion)
+    if (Test-Path -LiteralPath $moduleRoot) { Remove-Item -LiteralPath $moduleRoot -Recurse -Force }
     [System.IO.Directory]::CreateDirectory($moduleDir) | Out-Null
     $utf8 = [System.Text.UTF8Encoding]::new($false)
 

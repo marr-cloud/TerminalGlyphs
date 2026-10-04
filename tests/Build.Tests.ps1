@@ -107,6 +107,18 @@ Describe 'build output' {
     }
 }
 
+Describe 'build cleanup' {
+    It 'removes module versions left by earlier builds' {
+        $out = Join-Path $TestDrive 'stale-out'
+        $stale = Join-Path $out 'TerminalGlyphs' '0.0.1'
+        [System.IO.Directory]::CreateDirectory($stale) | Out-Null
+        [System.IO.File]::WriteAllText((Join-Path $stale 'TerminalGlyphs.psd1'), '@{}')
+        & $buildScript -OutputPath $out *> $null
+        $stale | Should -Not -Exist
+        Join-Path $out 'TerminalGlyphs' $moduleVersion 'TerminalGlyphs.psd1' | Should -Exist
+    }
+}
+
 Describe 'build validation' {
     It 'normalizes colors to upper-case hex without #' {
         $themes = New-ThemeFixture '{ "name": "default", "files": { "names": { "go.mod": "nf-dev-go" } } }' '{ "name": "default", "files": { "extensions": { ".go": "#00add8" } } }'
