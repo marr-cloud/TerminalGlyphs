@@ -288,3 +288,23 @@ Describe 'Invoke-DeviconsApply' {
         Get-TreeSnapshot -Path $world.Themes | Should -Be $before
     }
 }
+
+Describe 'Import-DeviconsMapping.ps1' {
+    BeforeAll { $script:Tool = Join-Path $script:RepoRoot 'tools' 'Import-DeviconsMapping.ps1' }
+
+    It 'writes the report' {
+        $world = New-FakeWorld 'tool-report'
+        $report = Join-Path $world.Root 'out' 'report.md'
+        & $script:Tool -Report $report -ThemesPath $world.Themes -VendorPath $world.Vendor -GlyphNamesPath $world.GlyphNames 6> $null
+        $report | Should -Exist
+        [System.IO.File]::ReadAllText($report) | Should -Match '### PrettierConfig'
+    }
+
+    It 'applies a decisions file' {
+        $world = New-FakeWorld 'tool-apply'
+        $decisions = Join-Path $world.Root 'decisions.jsonc'
+        [System.IO.File]::WriteAllText($decisions, '{ "exclude": [], "adopt": [], "colors": {} }')
+        & $script:Tool -Apply -Decisions $decisions -ThemesPath $world.Themes -VendorPath $world.Vendor -GlyphNamesPath $world.GlyphNames 6> $null
+        (Read-JsoncFile -Path (Join-Path $world.Themes 'icons' 'default.jsonc'))['files']['extensions']['.zig'] | Should -BeExactly 'nf-linux-l'
+    }
+}
