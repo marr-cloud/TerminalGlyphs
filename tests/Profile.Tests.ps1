@@ -91,6 +91,20 @@ Describe 'Update-ProfileImport' {
         [System.IO.File]::ReadAllText($path) | Should -BeExactly "Set-Alias ll ls$($Newline)Import-Module TerminalGlyphs$Newline"
     }
 
+    It 'keeps every byte of <Case> outside the module name' -ForEach @(
+        @{ Case = 'an ANSI (cp1252) profile'; Text = [byte[]](0x23, 0x20) + [System.Text.Encoding]::ASCII.GetBytes('Configuraci') + [byte[]](0xF3, 0x6E, 0x20, 0x80, 0x0D, 0x0A) }
+        @{ Case = 'a UTF-8 profile without BOM'; Text = [System.Text.UTF8Encoding]::new($false).GetBytes("# Funci$([char]0xF3)n $([char]0x20AC)`r`n") }
+    ) {
+        $ascii = [System.Text.Encoding]::ASCII
+        $before = [byte[]]($Text + $ascii.GetBytes("Import-Module Terminal-Icons`r`n") + $Text)
+        $expected = [byte[]]($Text + $ascii.GetBytes("Import-Module TerminalGlyphs`r`n") + $Text)
+        $path = Join-Path $TestDrive ([guid]::NewGuid()) 'profile.ps1'
+        [System.IO.Directory]::CreateDirectory((Split-Path -Parent $path)) | Out-Null
+        [System.IO.File]::WriteAllBytes($path, $before)
+        (Update-ProfileImport -Path $path).Status | Should -Be 'OK'
+        [System.IO.File]::ReadAllBytes($path) | Should -Be $expected
+    }
+
     It 'appends with the newline style of the file' {
         $path = New-Profile "Set-Alias ll ls`r`n"
         Update-ProfileImport -Path $path | Out-Null

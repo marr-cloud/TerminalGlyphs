@@ -4,7 +4,8 @@ function Update-ProfileImport {
         Makes a PowerShell profile import TerminalGlyphs instead of Terminal-Icons.
     .DESCRIPTION
         Edits the first profile in -Path that already imports Terminal-Icons or TerminalGlyphs, or else the first
-        profile in -Path. Keeps a backup, the file encoding and the line endings, and writes atomically.
+        profile in -Path. Keeps a backup, the file encoding and the line endings, and writes atomically. A file
+        without BOM keeps every byte outside the edit, whether it is UTF-8 or ANSI.
     #>
     [OutputType([pscustomobject])]
     [CmdletBinding(SupportsShouldProcess)]
@@ -27,11 +28,13 @@ function Update-ProfileImport {
         }
     }
 
+    # A new profile is UTF-8 without BOM. A file without BOM may be UTF-8 or ANSI (Windows PowerShell 5.1, old
+    # Notepad): Latin1 round-trips every byte and the edit only touches ASCII, so either keeps its exact bytes.
     $encoding = [System.Text.UTF8Encoding]::new($false)
     $text = ''
     $exists = [System.IO.File]::Exists($target)
     if ($exists) {
-        $reader = [System.IO.StreamReader]::new($target, $encoding, $true)
+        $reader = [System.IO.StreamReader]::new($target, [System.Text.Encoding]::Latin1, $true)
         try {
             $text = $reader.ReadToEnd()
             $encoding = $reader.CurrentEncoding
