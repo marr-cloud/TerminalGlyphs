@@ -28,6 +28,8 @@ function Install-NerdFontFile {
         [string]$RegistryPath = 'HKCU:\Software\Microsoft\Windows NT\CurrentVersion\Fonts'
     )
 
+    # This function runs only after Install-TerminalGlyphSetup approved the package, so the cmdlets below must not
+    # ask again when the caller passes -Confirm or -WhatIf.
     $installed = @{}
     foreach ($path in $InstalledFile) { $installed[[System.IO.Path]::GetFileName($path)] = $path }
     $result = [pscustomobject]@{
@@ -42,7 +44,7 @@ function Install-NerdFontFile {
         if ($installed.ContainsKey($name)) {
             $target = $installed[$name]
             try {
-                Copy-Item -LiteralPath $source -Destination $target -Force -ErrorAction Stop
+                Copy-Item -LiteralPath $source -Destination $target -Force -Confirm:$false -WhatIf:$false -ErrorAction Stop
                 $result.Replaced++
                 continue
             } catch {
@@ -54,18 +56,18 @@ function Install-NerdFontFile {
             # Windows keeps fonts in use open: it allows renaming them but not overwriting them.
             $stale = '{0}.{1}.old-nerdfont' -f $target, [DateTime]::UtcNow.ToString('yyyyMMddHHmmss', [cultureinfo]::InvariantCulture)
             try {
-                Move-Item -LiteralPath $target -Destination $stale -ErrorAction Stop
+                Move-Item -LiteralPath $target -Destination $stale -Confirm:$false -WhatIf:$false -ErrorAction Stop
             } catch {
                 $result.Failed.Add($name)
                 continue
             }
             try {
-                Copy-Item -LiteralPath $source -Destination $target -ErrorAction Stop
+                Copy-Item -LiteralPath $source -Destination $target -Confirm:$false -WhatIf:$false -ErrorAction Stop
                 $result.Renamed++
             } catch {
                 $result.Failed.Add($name)
                 try {
-                    Move-Item -LiteralPath $stale -Destination $target -Force -ErrorAction Stop
+                    Move-Item -LiteralPath $stale -Destination $target -Force -Confirm:$false -WhatIf:$false -ErrorAction Stop
                 } catch {
                     Write-Warning -Message "TerminalGlyphs: $name could not be restored now; it will be restored the next time you run Install-TerminalGlyphSetup."
                 }
@@ -77,7 +79,7 @@ function Install-NerdFontFile {
         [System.IO.Directory]::CreateDirectory($TargetDirectory) | Out-Null
         $target = [System.IO.Path]::Combine($TargetDirectory, $name)
         try {
-            Copy-Item -LiteralPath $source -Destination $target -Force -ErrorAction Stop
+            Copy-Item -LiteralPath $source -Destination $target -Force -Confirm:$false -WhatIf:$false -ErrorAction Stop
         } catch {
             $result.Failed.Add($name)
             continue
@@ -86,8 +88,8 @@ function Install-NerdFontFile {
             $info = Read-FontInfo -Path $target
             $label = if ($info) { $info.FullName } else { [System.IO.Path]::GetFileNameWithoutExtension($target) }
             $kind = if ([System.IO.Path]::GetExtension($target) -eq '.otf') { 'OpenType' } else { 'TrueType' }
-            if (-not (Test-Path -LiteralPath $RegistryPath)) { New-Item -Path $RegistryPath -Force | Out-Null }
-            New-ItemProperty -LiteralPath $RegistryPath -Name "$label ($kind)" -Value $target -PropertyType String -Force | Out-Null
+            if (-not (Test-Path -LiteralPath $RegistryPath)) { New-Item -Path $RegistryPath -Force -Confirm:$false -WhatIf:$false | Out-Null }
+            New-ItemProperty -LiteralPath $RegistryPath -Name "$label ($kind)" -Value $target -PropertyType String -Force -Confirm:$false -WhatIf:$false | Out-Null
         }
         $result.Added.Add($target)
     }

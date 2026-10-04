@@ -359,3 +359,42 @@ Describe 'Remove-StaleFontFile' {
         (Remove-StaleFontFile -FontDirectory $dir).Removed | Should -Be 1
     }
 }
+
+Describe 'Install-NerdFontFile with -Confirm in effect' {
+    It 'does not prompt again for each file when the caller asked to confirm' {
+        $case = Join-Path $TestDrive "confirm-$([guid]::NewGuid())"
+        $source = New-TestFont -Path (Join-Path $case 'new' 'TestNerdFontMono-Regular.ttf') -FullName 'New' -Version 'Version 3.0;Nerd Fonts 3.5.1'
+        $other = New-TestFont -Path (Join-Path $case 'new' 'TestNerdFontMono-Bold.ttf') -FullName 'NewBold' -Version 'Version 3.0;Nerd Fonts 3.5.1'
+        $fonts = Join-Path $case 'fonts'
+        $installed = New-TestFont -Path (Join-Path $fonts 'TestNerdFontMono-Regular.ttf') -FullName 'Old' -Version 'Version 2.0;Nerd Fonts 3.0.2'
+        $script = @"
+`$ErrorActionPreference = 'Stop'
+. '$(Join-Path $script:RepoRoot 'src' 'Private' 'Install-NerdFontFile.ps1')'
+`$ConfirmPreference = 'Low'
+`$r = Install-NerdFontFile -SourceFile '$source', '$other' -TargetDirectory '$fonts' -Platform Linux -InstalledFile '$installed'
+'{0}|{1}|{2}' -f `$r.Added.Count, `$r.Replaced, `$r.Failed.Count
+"@
+        $run = Invoke-IsolatedPwsh -Command $script
+        $run.ExitCode | Should -Be 0 -Because $run.All
+        $run.Output.Trim() | Should -Be '1|1|0'
+        Join-Path $fonts 'TestNerdFontMono-Bold.ttf' | Should -Exist
+        [System.IO.File]::ReadAllBytes($installed) | Should -Be ([System.IO.File]::ReadAllBytes($source))
+    }
+}
+
+Describe 'Remove-StaleFontFile approved changes' {
+    It 'does not prompt a second time inside an approved change' {
+        $now = [DateTime]::UtcNow
+        $stamp = $now.AddHours(-2).ToString('yyyyMMddHHmmss', [cultureinfo]::InvariantCulture)
+        $dir = Join-Path $TestDrive "once-$([guid]::NewGuid())"
+        [System.IO.Directory]::CreateDirectory($dir) | Out-Null
+        [System.IO.File]::WriteAllText((Join-Path $dir 'A.ttf'), 'new')
+        [System.IO.File]::WriteAllText((Join-Path $dir "A.ttf.$stamp.old-nerdfont"), 'old')
+        [System.IO.File]::WriteAllText((Join-Path $dir "B.ttf.$stamp.old-nerdfont"), 'old')
+        Mock Remove-Item { }
+        Mock Move-Item { }
+        Remove-StaleFontFile -FontDirectory $dir -BootTime $now.AddHours(-1) | Out-Null
+        Should -Invoke Remove-Item -Times 1 -Exactly -ParameterFilter { $PesterBoundParameters['Confirm'] -eq $false -and $PesterBoundParameters['WhatIf'] -eq $false }
+        Should -Invoke Move-Item -Times 1 -Exactly -ParameterFilter { $PesterBoundParameters['Confirm'] -eq $false -and $PesterBoundParameters['WhatIf'] -eq $false }
+    }
+}

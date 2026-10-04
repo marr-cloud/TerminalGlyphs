@@ -30,7 +30,7 @@ function Remove-StaleFontFile {
         if (-not [System.IO.File]::Exists($original)) {
             if ($PSCmdlet.ShouldProcess($file.FullName, "Restore missing font $originalName")) {
                 try {
-                    Move-Item -LiteralPath $file.FullName -Destination $original -ErrorAction Stop
+                    Move-Item -LiteralPath $file.FullName -Destination $original -Confirm:$false -WhatIf:$false -ErrorAction Stop
                     $result.Restored++
                 } catch {
                     $result.Pending++
@@ -44,7 +44,7 @@ function Remove-StaleFontFile {
         }
         if ($PSCmdlet.ShouldProcess($file.FullName, 'Delete replaced font file')) {
             try {
-                Remove-Item -LiteralPath $file.FullName -Force -ErrorAction Stop
+                Remove-Item -LiteralPath $file.FullName -Force -Confirm:$false -WhatIf:$false -ErrorAction Stop
                 $result.Removed++
             } catch {
                 $result.Pending++
