@@ -63,6 +63,20 @@ Describe 'Get-FontLocation' {
         }
     }
 
+    It 'returns the font folders for all users of this platform' {
+        # Only the path values: the folders themselves are not read here.
+        $expected = if ($IsWindows) {
+            @([Environment]::GetFolderPath('Fonts'))
+        } elseif ($IsMacOS) {
+            @('/Library/Fonts')
+        } else {
+            @('/usr/share/fonts', '/usr/local/share/fonts', (Join-Path $HOME '.fonts'))
+        }
+        $location = Get-FontLocation
+        $location.SystemDirectory | Should -BeOfType [string]
+        @($location.SystemDirectory) | Should -Be $expected
+    }
+
     It 'honors XDG_DATA_HOME on Linux' -Skip:(-not $IsLinux) {
         $saved = $env:XDG_DATA_HOME
         try {

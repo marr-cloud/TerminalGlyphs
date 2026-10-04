@@ -7,7 +7,8 @@ function Install-TerminalGlyphSetup {
         (3.5.1), installs the packages in -Family (or JetBrainsMono if you have no Nerd Font), and replaces
         "Import-Module Terminal-Icons" in your profile, keeping a backup. Fonts are installed for the current user
         only, without admin rights. Your terminal settings are not changed: choose the font there afterwards.
-        Nerd Fonts 2.x files are not changed: remove them first, then run the command again.
+        Nerd Fonts 2.x files are not changed: remove them first, then run the command again. Nerd Fonts installed
+        for all users are reported but not changed.
 
         Each step runs even if another one fails, and the command returns one result per step. On Windows, fonts
         that were in use are replaced after you restart Windows.
@@ -74,19 +75,34 @@ function Install-TerminalGlyphSetup {
             }
 
             $installed = @(Get-NerdFontInstallation -FontDirectory $location.Directory -PackageMap $packageMap -MinimumVersion $version)
-            foreach ($legacy in ($installed | Where-Object { $_.IsLegacy })) {
-                $advice = '{0} file(s) from Nerd Fonts 2.x; remove them in your system font settings, then run Install-TerminalGlyphSetup again' -f $legacy.Files.Count
-                Write-Warning -Message "TerminalGlyphs: $advice."
-                & $newStep "Font $($legacy.Name)" 'Skipped' $advice
+            # Fonts installed for all users are only reported: changing them needs admin rights.
+            $system = @(foreach ($systemDirectory in @($location.SystemDirectory | Where-Object { $_ })) {
+                    Get-NerdFontInstallation -FontDirectory $systemDirectory -PackageMap $packageMap -MinimumVersion $version
+                })
+            foreach ($scan in @(@{ Suffix = ''; Found = $installed }, @{ Suffix = ' (all users)'; Found = $system })) {
+                foreach ($legacy in ($scan.Found | Where-Object { $_.IsLegacy })) {
+                    $advice = '{0} file(s) from Nerd Fonts 2.x; remove them in your system font settings, then run Install-TerminalGlyphSetup again' -f $legacy.Files.Count
+                    Write-Warning -Message "TerminalGlyphs: $advice."
+                    & $newStep "Font $($legacy.Name)$($scan.Suffix)" 'Skipped' $advice
+                }
             }
             foreach ($unknown in ($installed | Where-Object { -not $_.Package -and -not $_.IsLegacy })) {
                 Write-Warning -Message "TerminalGlyphs: $($unknown.Name) is not a Nerd Fonts $version family; it was not changed."
                 & $newStep "Font $($unknown.Name)" 'Skipped' 'Unknown Nerd Fonts family'
             }
+            foreach ($shared in ($system | Where-Object { -not $_.IsLegacy })) {
+                $stepName = "Font $($shared.Name) (all users)"
+                if ($shared.IsOutdated) {
+                    $from = if ($shared.Version) { $shared.Version } else { 'unknown version' }
+                    & $newStep $stepName 'Skipped' "Nerd Fonts $from installed for all users; updating it needs admin rights"
+                } else {
+                    & $newStep $stepName 'Unchanged' "Nerd Fonts $($shared.Version)"
+                }
+            }
             $plan = [ordered]@{}
             foreach ($entry in ($installed | Where-Object { $_.Package })) { $plan[$entry.Package] = $entry }
             foreach ($name in $requested) { if (-not $plan.Contains($name)) { $plan[$name] = $null } }
-            if (-not $Family -and $installed.Count -eq 0) { $plan['JetBrainsMono'] = $null }
+            if (-not $Family -and $installed.Count -eq 0 -and $system.Count -eq 0) { $plan['JetBrainsMono'] = $null }
 
             $changed = 0
             foreach ($package in $plan.Keys) {

@@ -101,6 +101,49 @@ Describe 'Install-TerminalGlyphSetup' {
         Should -Invoke -ModuleName TerminalGlyphs Save-NerdFontRelease -Times 0
     }
 
+    Context 'with Nerd Fonts installed for all users' {
+        BeforeEach {
+            $systemDir = Join-Path $TestDrive 'system-fonts'
+            Mock -ModuleName TerminalGlyphs Get-FontLocation { [pscustomobject]@{ Platform = 'Windows'; Directory = $fontDir; SystemDirectory = [string[]]@($systemDir) } }
+        }
+
+        It 'does not install the default font when a current one is installed for all users' {
+            Mock -ModuleName TerminalGlyphs Get-NerdFontInstallation -ParameterFilter { $FontDirectory -eq $systemDir } { New-Family 'JetBrainsMono' '3.5.1' $false }
+            $result = Invoke-Setup
+            $step = Get-Step $result 'Font JetBrainsMono (all users)'
+            $step.Status | Should -Be 'Unchanged'
+            $step.Detail | Should -Be 'Nerd Fonts 3.5.1'
+            Get-Step $result 'Font JetBrainsMono' | Should -BeNullOrEmpty
+            Should -Invoke -ModuleName TerminalGlyphs Save-NerdFontRelease -Times 0
+        }
+
+        It 'reports an outdated family for all users without changing it' {
+            Mock -ModuleName TerminalGlyphs Get-NerdFontInstallation -ParameterFilter { $FontDirectory -eq $systemDir } { New-Family 'FiraCode' '3.0.2' $true }
+            Mock -ModuleName TerminalGlyphs Get-NerdFontInstallation -ParameterFilter { $FontDirectory -eq $fontDir } { New-Family 'Hack' '3.5.1' $false }
+            $result = Invoke-Setup
+            $step = Get-Step $result 'Font FiraCode (all users)'
+            $step.Status | Should -Be 'Skipped'
+            $step.Detail | Should -Be 'Nerd Fonts 3.0.2 installed for all users; updating it needs admin rights'
+            (Get-Step $result 'Font Hack').Status | Should -Be 'Unchanged'
+            Get-Step $result 'Font FiraCode' | Should -BeNullOrEmpty
+            Should -Invoke -ModuleName TerminalGlyphs Save-NerdFontRelease -Times 0
+            Should -Invoke -ModuleName TerminalGlyphs Install-NerdFontFile -Times 0
+        }
+
+        It 'reports Nerd Fonts 2.x files for all users' {
+            Mock -ModuleName TerminalGlyphs Get-NerdFontInstallation -ParameterFilter { $FontDirectory -eq $systemDir } {
+                [pscustomobject]@{ Name = 'Nerd Fonts 2.x'; Package = $null; Files = [System.Collections.Generic.List[string]]@('a.ttf'); Version = $null; IsOutdated = $true; IsLegacy = $true }
+            }
+            $result = Invoke-Setup @{ WarningAction = 'SilentlyContinue' }
+            $step = @(Get-Step $result 'Font Nerd Fonts 2.x (all users)')
+            $step.Count | Should -Be 1
+            $step[0].Status | Should -Be 'Skipped'
+            $step[0].Detail | Should -BeExactly '1 file(s) from Nerd Fonts 2.x; remove them in your system font settings, then run Install-TerminalGlyphSetup again'
+            Get-Step $result 'Font JetBrainsMono' | Should -BeNullOrEmpty
+            Should -Invoke -ModuleName TerminalGlyphs Save-NerdFontRelease -Times 0
+        }
+    }
+
     It 'rejects an unknown -Family before changing anything' {
         { Install-TerminalGlyphSetup -Family 'NoSuchFont' } | Should -Throw '*Unknown Nerd Fonts package*NoSuchFont*'
         Should -Invoke -ModuleName TerminalGlyphs Get-FontLocation -Times 0
