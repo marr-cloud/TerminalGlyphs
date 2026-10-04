@@ -6,6 +6,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- `-Family` accepts the `NL` suffix only for JetBrainsMono and `S`/`M`/`L` (with or without `DZ`) only for Meslo,
+  the families that ship those variants. Unknown names now get suggestions from font names too (`MonaspiceNe` ->
+  `Monaspace`, `'Caskaydia Cov'` -> `CascadiaCode`).
+- `build.ps1` checks the vendored Nerd Fonts data against `vendor/nerd-fonts/manifest.json` (version and SHA-256 of
+  each file), so a partial update fails the build instead of the download.
+- `tools/Test-Publish.ps1` runs the rehearsal in a child pwsh: no more retries to remove its temporary folder, and
+  temporary paths with quotes work.
+
+### Fixed
+
+- A font that cannot be replaced in several folders is counted once.
+- The fontconfig test no longer writes to the real `~/.cache/fontconfig`.
+
 ## [0.2.1] - 2026-10-04
 
 ### Added
