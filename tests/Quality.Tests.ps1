@@ -18,7 +18,7 @@ Describe 'module manifest' {
         $manifest = Test-ModuleManifest -Path $manifestPath
         $manifest.PowerShellVersion | Should -Be ([version]'7.4')
         $manifest.CompatiblePSEditions | Should -Be @('Core')
-        $manifest.Version | Should -Be ([version]'0.3.1')
+        $manifest.Version | Should -Be ([version]'0.3.2')
         $manifest.Guid | Should -Be ([guid]'191db48e-7499-4eff-8584-fb8c62a2ddee')
     }
 
