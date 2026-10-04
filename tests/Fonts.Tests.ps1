@@ -239,6 +239,9 @@ Describe 'Invoke-FontCacheRefresh' {
         # fontconfig writes its cache under XDG_CACHE_HOME: keep it in TestDrive, not in the real ~/.cache/fontconfig.
         $savedCacheHome = $env:XDG_CACHE_HOME
         $env:XDG_CACHE_HOME = Join-Path $TestDrive 'cache'
+        # fc-cache fails on a folder that contains its own cache, so the tests scan folders beside it.
+        $scan = Join-Path $TestDrive 'fc-scan'
+        [System.IO.Directory]::CreateDirectory($scan) | Out-Null
     }
 
     AfterAll {
@@ -255,12 +258,12 @@ Describe 'Invoke-FontCacheRefresh' {
 
     It 'returns whether fc-cache ran' {
         $expected = [bool](Get-Command -Name 'fc-cache' -CommandType Application -ErrorAction Ignore)
-        Invoke-FontCacheRefresh -Directory $TestDrive | Should -Be $expected
+        Invoke-FontCacheRefresh -Directory $scan | Should -Be $expected
     }
 
     It 'refreshes several folders and skips missing ones' {
         $expected = [bool](Get-Command -Name 'fc-cache' -CommandType Application -ErrorAction Ignore)
-        Invoke-FontCacheRefresh -Directory $TestDrive, (Join-Path $TestDrive 'missing') | Should -Be $expected
+        Invoke-FontCacheRefresh -Directory $scan, (Join-Path $TestDrive 'missing') | Should -Be $expected
     }
 }
 
