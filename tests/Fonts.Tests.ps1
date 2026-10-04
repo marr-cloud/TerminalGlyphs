@@ -182,3 +182,115 @@ Describe 'Save-NerdFontRelease' {
         { Save-NerdFontRelease -Package 'Hack' -Version '3.5.1' -Destination $work } | Should -Throw '*network down*'
     }
 }
+
+Describe 'Invoke-FontCacheRefresh' {
+    It 'returns whether fc-cache ran' {
+        $expected = [bool](Get-Command -Name 'fc-cache' -CommandType Application -ErrorAction Ignore)
+        Invoke-FontCacheRefresh -Directory $TestDrive | Should -Be $expected
+    }
+}
+
+Describe 'Register-FontResource' -Skip:(-not $IsWindows) {
+    It 'fails for a file Windows cannot load' {
+        $path = Join-Path $TestDrive 'not-a-font.ttf'
+        [System.IO.File]::WriteAllText($path, 'nope')
+        { Register-FontResource -Path $path } | Should -Throw '*could not load*'
+    }
+}
+
+Describe 'Install-NerdFontFile' {
+    BeforeAll {
+        $registryPath = 'HKCU:\Software\TerminalGlyphs.Tests\Fonts'
+        function New-Case {
+            $case = Join-Path $TestDrive "case-$([guid]::NewGuid())"
+            $new = Join-Path $case 'new'
+            [pscustomobject]@{
+                Root   = $case
+                Fonts  = Join-Path $case 'fonts'
+                Source = @(
+                    New-TestFont -Path (Join-Path $new 'TestNerdFontMono-Regular.ttf') -FullName 'Test NFM Regular'
+                    New-TestFont -Path (Join-Path $new 'TestNerdFontMono-Bold.otf') -FullName 'Test NFM Bold'
+                )
+            }
+        }
+    }
+
+    BeforeEach {
+        Mock Register-FontResource { }
+    }
+
+    AfterAll {
+        if ($IsWindows) { Remove-Item -LiteralPath 'HKCU:\Software\TerminalGlyphs.Tests' -Recurse -Force -ErrorAction Ignore }
+    }
+
+    It 'adds missing files on <Platform> without touching the registry' -ForEach @(@{ Platform = 'Linux' }, @{ Platform = 'MacOS' }) {
+        $case = New-Case
+        $result = Install-NerdFontFile -SourceFile $case.Source -TargetDirectory $case.Fonts -Platform $Platform
+        $result.Added.Count | Should -Be 2
+        Join-Path $case.Fonts 'TestNerdFontMono-Regular.ttf' | Should -Exist
+        Should -Invoke Register-FontResource -Times 0
+    }
+
+    It 'registers added files for the current Windows user and loads them once' -Skip:(-not $IsWindows) {
+        $case = New-Case
+        $result = Install-NerdFontFile -SourceFile $case.Source -TargetDirectory $case.Fonts -Platform Windows -RegistryPath $registryPath
+        $result.Added.Count | Should -Be 2
+        $key = Get-Item -LiteralPath $registryPath
+        $key.GetValue('Test NFM Regular (TrueType)') | Should -Be (Join-Path $case.Fonts 'TestNerdFontMono-Regular.ttf')
+        $key.GetValue('Test NFM Bold (OpenType)') | Should -Be (Join-Path $case.Fonts 'TestNerdFontMono-Bold.otf')
+        Should -Invoke Register-FontResource -Times 1 -Exactly -ParameterFilter { $Path.Count -eq 2 }
+    }
+
+    It 'with -UpdateOnly, skips files that are not installed' {
+        $case = New-Case
+        $result = Install-NerdFontFile -SourceFile $case.Source -TargetDirectory $case.Fonts -Platform Windows -UpdateOnly -RegistryPath $registryPath
+        $result.Added.Count + $result.Replaced | Should -Be 0
+        $case.Fonts | Should -Not -Exist
+    }
+
+    It 'replaces installed files where they are, matching names without case' {
+        $case = New-Case
+        $installed = New-TestFont -Path (Join-Path $case.Root 'elsewhere' 'testnerdfontmono-regular.ttf') -FullName 'Old'
+        $result = Install-NerdFontFile -SourceFile $case.Source -TargetDirectory $case.Fonts -Platform Linux -InstalledFile $installed -UpdateOnly
+        $result.Replaced | Should -Be 1
+        (Read-FontInfo -Path $installed).FullName | Should -Be 'Test NFM Regular'
+        $case.Fonts | Should -Not -Exist
+    }
+
+    It 'on Windows, renames a file in use and copies the new one' {
+        $case = New-Case
+        $installed = New-TestFont -Path (Join-Path $case.Fonts 'TestNerdFontMono-Regular.ttf') -FullName 'Old'
+        $script:CopyCalls = 0
+        Mock Copy-Item {
+            $script:CopyCalls++
+            if ($script:CopyCalls -eq 1) { throw [System.IO.IOException]::new('The file is in use.') }
+            [System.IO.File]::Copy($LiteralPath, $Destination, $true)
+        }
+        $result = Install-NerdFontFile -SourceFile $case.Source[0] -TargetDirectory $case.Fonts -Platform Windows -InstalledFile $installed -UpdateOnly
+        $result.Renamed | Should -Be 1
+        (Read-FontInfo -Path $installed).FullName | Should -Be 'Test NFM Regular'
+        $stale = @(Get-ChildItem -LiteralPath $case.Fonts -Filter '*.old-nerdfont')
+        $stale.Count | Should -Be 1
+        $stale[0].Name | Should -Match '^TestNerdFontMono-Regular\.ttf\.\d{14}\.old-nerdfont$'
+        (Read-FontInfo -Path $stale[0].FullName).FullName | Should -Be 'Old'
+    }
+
+    It 'on Windows, puts the original back when the new copy fails' {
+        $case = New-Case
+        $installed = New-TestFont -Path (Join-Path $case.Fonts 'TestNerdFontMono-Regular.ttf') -FullName 'Old'
+        Mock Copy-Item { throw [System.IO.IOException]::new('The file is in use.') }
+        $result = Install-NerdFontFile -SourceFile $case.Source[0] -TargetDirectory $case.Fonts -Platform Windows -InstalledFile $installed -UpdateOnly
+        $result.Failed | Should -Be @('TestNerdFontMono-Regular.ttf')
+        (Read-FontInfo -Path $installed).FullName | Should -Be 'Old'
+        @(Get-ChildItem -LiteralPath $case.Fonts -Filter '*.old-nerdfont').Count | Should -Be 0
+    }
+
+    It 'on <Platform>, reports a failed copy without renaming' -ForEach @(@{ Platform = 'Linux' }, @{ Platform = 'MacOS' }) {
+        $case = New-Case
+        $installed = New-TestFont -Path (Join-Path $case.Fonts 'TestNerdFontMono-Regular.ttf') -FullName 'Old'
+        Mock Copy-Item { throw [System.IO.IOException]::new('Permission denied.') }
+        $result = Install-NerdFontFile -SourceFile $case.Source[0] -TargetDirectory $case.Fonts -Platform $Platform -InstalledFile $installed -UpdateOnly
+        $result.Failed.Count | Should -Be 1
+        @(Get-ChildItem -LiteralPath $case.Fonts -Filter '*.old-nerdfont').Count | Should -Be 0
+    }
+}
