@@ -35,12 +35,19 @@ foreach ($helper in 'Read-JsoncFile', 'Get-GlyphThemeEntry', 'Test-GlyphThemeEnt
 
 function Confirm-NerdFontData {
     param([string]$VendorPath)
-    # Every vendored Nerd Fonts file must match manifest.json, so a partial update fails here instead of at download time.
-    $manifest = Read-JsoncFile -Path ([System.IO.Path]::Combine($VendorPath, 'manifest.json'))
-    foreach ($name in $manifest['files'].Keys) {
-        $actual = (Get-FileHash -LiteralPath ([System.IO.Path]::Combine($VendorPath, $name)) -Algorithm SHA256).Hash
-        if ($actual -ne $manifest['files'][$name]) {
-            throw "vendor/nerd-fonts/$name does not match manifest.json (SHA-256 $actual). Update the file and manifest.json together."
+    # Every vendored Nerd Fonts file the build reads must match manifest.json, so a partial update fails here instead
+    # of at download time.
+    $manifestPath = [System.IO.Path]::Combine($VendorPath, 'manifest.json')
+    if (-not [System.IO.File]::Exists($manifestPath)) { throw "$manifestPath is missing; it records the version and SHA-256 of the vendored Nerd Fonts files." }
+    $manifest = Read-JsoncFile -Path $manifestPath
+    $files = $manifest['files']
+    foreach ($name in 'glyphnames.json', 'fonts.json', 'SHA-256.txt') {
+        if ($null -eq $files -or -not $files.Contains($name)) { throw "manifest.json does not list $name; add its SHA-256 to $manifestPath." }
+        $path = [System.IO.Path]::Combine($VendorPath, $name)
+        if (-not [System.IO.File]::Exists($path)) { throw "$name is listed in manifest.json but missing: $path" }
+        $actual = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash
+        if ($actual -ne $files[$name]) {
+            throw "$path does not match manifest.json (expected SHA-256 $($files[$name]), got $actual). Update the file and manifest.json together."
         }
     }
     [string]$manifest['version']

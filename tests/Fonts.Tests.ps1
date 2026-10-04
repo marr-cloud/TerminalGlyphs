@@ -245,7 +245,8 @@ Describe 'Invoke-FontCacheRefresh' {
         $env:XDG_CACHE_HOME = $savedCacheHome
     }
 
-    It 'writes the fontconfig cache under TestDrive' -Skip:(-not $IsLinux -or -not (Get-Command -Name 'fc-cache' -CommandType Application -ErrorAction Ignore)) {
+    # As root, fc-cache writes to the system cache instead, so the test only runs as a normal user.
+    It 'writes the fontconfig cache under TestDrive' -Skip:(-not $IsLinux -or -not (Get-Command -Name 'fc-cache' -CommandType Application -ErrorAction Ignore) -or (& id -u) -eq '0') {
         $fonts = Join-Path $TestDrive 'fc-fonts'
         New-TestFont -Path (Join-Path $fonts 'TestNerdFont-Regular.ttf') | Out-Null
         Invoke-FontCacheRefresh -Directory $fonts | Out-Null
@@ -510,7 +511,7 @@ Describe 'Remove-StaleFontFile approved changes' {
 }
 Describe 'Resolve-NerdFontPackage' {
     BeforeAll {
-        $map = @{ JetBrainsMono = 'JetBrainsMono'; CaskaydiaCove = 'CascadiaCode'; CaskaydiaMono = 'CascadiaMono'; MesloLG = 'Meslo'; FiraCode = 'FiraCode'; Hack = 'Hack' }
+        $map = @{ JetBrainsMono = 'JetBrainsMono'; CaskaydiaCove = 'CascadiaCode'; CaskaydiaMono = 'CascadiaMono'; MesloLG = 'Meslo'; FiraCode = 'FiraCode'; Hack = 'Hack'; Overpass = 'Overpass'; OpenDyslexic = 'OpenDyslexic' }
     }
 
     It 'resolves <Name> to <Expected>' -ForEach @(
@@ -526,6 +527,8 @@ Describe 'Resolve-NerdFontPackage' {
         @{ Name = 'MesloLGS'; Expected = 'Meslo' }
         @{ Name = 'MesloLGM NF'; Expected = 'Meslo' }
         @{ Name = 'MesloLGLDZ Nerd Font Mono'; Expected = 'Meslo' }
+        @{ Name = 'OverpassM Nerd Font'; Expected = 'Overpass' }
+        @{ Name = 'OpenDyslexicM'; Expected = 'OpenDyslexic' }
     ) {
         Resolve-NerdFontPackage -Name $Name -PackageMap $map | Should -BeExactly $Expected
     }
@@ -541,7 +544,7 @@ Describe 'Resolve-NerdFontPackage' {
 
 Describe 'Get-NerdFontPackageSuggestion' {
     BeforeAll {
-        $map = @{ JetBrainsMono = 'JetBrainsMono'; CaskaydiaCove = 'CascadiaCode'; CaskaydiaMono = 'CascadiaMono'; MesloLG = 'Meslo'; Hack = 'Hack'; Monaspice = 'Monaspace' }
+        $map = @{ JetBrainsMono = 'JetBrainsMono'; CaskaydiaCove = 'CascadiaCode'; CaskaydiaMono = 'CascadiaMono'; MesloLG = 'Meslo'; Hack = 'Hack'; Monaspice = 'Monaspace'; Terminess = 'Terminus'; iMWriting = 'iA-Writer'; BigBlueTerm = 'BigBlueTerminal'; IosevkaTerm = 'IosevkaTerm' }
     }
 
     It 'suggests <Expected> for <Name>' -ForEach @(
@@ -558,7 +561,11 @@ Describe 'Get-NerdFontPackageSuggestion' {
         $suggestions | Should -Be @('CascadiaCode', 'CascadiaMono')
     }
 
-    It 'suggests nothing for <Name>' -ForEach @(@{ Name = 'Zzzz' }, @{ Name = '' }, @{ Name = 'Nerd Font' }) {
+    It 'puts the package whose name starts the font name first (<Name>)' -ForEach @(@{ Name = 'Terminus TTF'; Expected = 'Terminus' }, @{ Name = 'iA Writer Mono'; Expected = 'iA-Writer' }) {
+        @(Get-NerdFontPackageSuggestion -Name $Name -PackageMap $map)[0] | Should -Be $Expected
+    }
+
+    It 'suggests nothing for <Name>' -ForEach @(@{ Name = 'Zzzz' }, @{ Name = '' }, @{ Name = 'Nerd Font' }, @{ Name = 'Mo' }, @{ Name = 'M' }) {
         Get-NerdFontPackageSuggestion -Name $Name -PackageMap $map | Should -BeNullOrEmpty
     }
 }

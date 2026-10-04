@@ -25,7 +25,8 @@ $work = [System.IO.Path]::Combine([System.IO.Path]::GetTempPath(), "terminalglyp
 $env:TERMINALGLYPHS_REHEARSAL_BUILT = $built
 $env:TERMINALGLYPHS_REHEARSAL_WORK = $work
 $env:TERMINALGLYPHS_REHEARSAL_VERSION = $version
-$env:TERMINALGLYPHS_REHEARSAL_REPOSITORY = "TerminalGlyphsRehearsal$([guid]::NewGuid().ToString('N'))"
+$repository = "TerminalGlyphsRehearsal$([guid]::NewGuid().ToString('N'))"
+$env:TERMINALGLYPHS_REHEARSAL_REPOSITORY = $repository
 $rehearsal = {
     $ErrorActionPreference = 'Stop'
     $feed = [System.IO.Path]::Combine($env:TERMINALGLYPHS_REHEARSAL_WORK, 'feed')
@@ -44,12 +45,15 @@ $rehearsal = {
 }
 try {
     $count = @(& ([Environment]::ProcessPath) -NoProfile -NonInteractive -Command $rehearsal)[-1]
-    if ($LASTEXITCODE -ne 0 -or [int]$count -ne $manifest.FunctionsToExport.Count) {
+    if ($LASTEXITCODE -ne 0) { throw "The publish rehearsal failed (exit code $LASTEXITCODE); see the errors above." }
+    if ("$count" -ne "$($manifest.FunctionsToExport.Count)") {
         throw "The published module exported $count functions; expected $($manifest.FunctionsToExport.Count)."
     }
     Write-Host "Publish rehearsal OK: TerminalGlyphs $version exports $count functions."
 } finally {
     Remove-Item -Path 'Env:TERMINALGLYPHS_REHEARSAL_*' -ErrorAction Ignore
+    # The child unregisters the repository; this covers a child that was killed before it could.
+    Unregister-PSResourceRepository -Name $repository -ErrorAction Ignore
     Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction Ignore
     if ([System.IO.Directory]::Exists($work)) { Write-Warning -Message "Could not remove $work" }
 }

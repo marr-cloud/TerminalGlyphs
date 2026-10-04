@@ -2,7 +2,9 @@
 
 - License: MIT for source files outside folders with an explicit OFL license (see LICENSE in this folder).
 - `manifest.json` records the Nerd Fonts version and the SHA-256 of each data file below. `build.ps1` fails if a file
-  does not match it or if the version differs from `glyphnames.json`, so update the files and `manifest.json` together.
+  is missing, is not listed or does not match it, or if the version differs from `glyphnames.json`, so update the
+  files and `manifest.json` together. `fonts.json` and `SHA-256.txt` carry no version of their own: when updating,
+  take all three files from the same release.
 
 ## glyphnames.json
 

@@ -26,8 +26,9 @@ function Resolve-NerdFontPackage {
     foreach ($prefix in $PackageMap.Keys) {
         if ($prefix -eq $key) { return $PackageMap[$prefix] }
     }
-    # Only these families ship variants named after them: JetBrainsMonoNL and MesloLGS/LGM/LGL (with or without DZ).
-    $variants = @{ JetBrainsMono = '^(?i)NL$'; MesloLG = '^(?i)[SML](DZ)?$' }
+    # Nerd Fonts 3.5.1 families named after their package plus a variant suffix: JetBrainsMonoNL, MesloLGS/LGM/LGL
+    # (with or without DZ), OverpassM and OpenDyslexicM.
+    $variants = @{ JetBrainsMono = '^(?i)NL$'; MesloLG = '^(?i)[SML](DZ)?$'; Overpass = '^(?i)M$'; OpenDyslexic = '^(?i)M$' }
     foreach ($prefix in $variants.Keys) {
         if ($PackageMap.Contains($prefix) -and $key.StartsWith($prefix, [System.StringComparison]::OrdinalIgnoreCase) -and $key.Substring($prefix.Length) -match $variants[$prefix]) {
             return $PackageMap[$prefix]
