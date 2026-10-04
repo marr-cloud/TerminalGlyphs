@@ -40,6 +40,20 @@ Describe 'build output' {
         $data['glyphs'].Contains('nf-md-arrow_right_thick') | Should -BeTrue
     }
 
+    It 'includes the ANSI sequence of every color used by the color themes' {
+        . (Join-Path $script:RepoRoot 'src' 'Private' 'Get-GlyphThemeEntry.ps1')
+        $checked = 0
+        foreach ($theme in $data['colorThemes'].Values) {
+            foreach ($entry in (Get-GlyphThemeEntry -Theme $theme)) {
+                $hex = $entry.Value.TrimStart('#')
+                $expected = "$([char]27)[38;2;$([Convert]::ToInt32($hex.Substring(0, 2), 16));$([Convert]::ToInt32($hex.Substring(2, 2), 16));$([Convert]::ToInt32($hex.Substring(4, 2), 16))m"
+                $data['ansi'][$hex.ToUpperInvariant()] | Should -BeExactly $expected -Because $entry.Value
+                $checked++
+            }
+        }
+        $checked | Should -BeGreaterThan 1000
+    }
+
     It 'compiles every theme entry exactly as in themes/' {
         foreach ($helper in 'Read-JsoncFile', 'Get-GlyphThemeEntry') { . (Join-Path $script:RepoRoot 'src' 'Private' "$helper.ps1") }
         $checked = 0
