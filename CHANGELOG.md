@@ -6,6 +6,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-10-04
+
 ### Changed
 
 - The first listing of a session is faster (about 290 ms instead of 450 ms in 0.3.0, and below 0.2.2): the built-in
