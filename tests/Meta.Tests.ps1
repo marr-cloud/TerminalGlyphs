@@ -60,6 +60,12 @@ Describe 'documentation' {
 }
 
 Describe 'workflows' {
+    It 'workflows restrict the token to read-only contents' {
+        foreach ($file in '.github/workflows/ci.yml', '.github/workflows/publish.yml') {
+            Get-RepoText $file | Should -Match '(?m)^permissions:\s*\r?\n\s+contents: read'
+        }
+    }
+
     It 'CI runs on Windows and Linux' {
         $ci = Get-RepoText '.github/workflows/ci.yml'
         $ci | Should -Match 'windows-latest'
