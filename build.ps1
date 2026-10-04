@@ -34,6 +34,7 @@ foreach ($helper in 'Read-JsoncFile', 'Get-GlyphThemeEntry', 'Test-GlyphThemeEnt
 }
 
 function Confirm-NerdFontData {
+    param([string]$VendorPath)
     # Every vendored Nerd Fonts file must match manifest.json, so a partial update fails here instead of at download time.
     $manifest = Read-JsoncFile -Path ([System.IO.Path]::Combine($VendorPath, 'manifest.json'))
     foreach ($name in $manifest['files'].Keys) {
@@ -46,6 +47,7 @@ function Confirm-NerdFontData {
 }
 
 function Get-NerdGlyphSet {
+    param([string]$VendorPath)
     $raw = Read-JsoncFile -Path ([System.IO.Path]::Combine($VendorPath, 'glyphnames.json'))
     $map = [System.Collections.Generic.SortedDictionary[string, string]]::new([System.StringComparer]::Ordinal)
     foreach ($name in $raw.Keys) {
@@ -91,10 +93,10 @@ function Read-ThemeDirectory {
 }
 
 function Invoke-ModuleBuild {
-    param([string]$ThemesPath, [string]$OutputPath)
+    param([string]$ThemesPath, [string]$OutputPath, [string]$VendorPath)
     $manifest = Import-PowerShellDataFile -LiteralPath ([System.IO.Path]::Combine($root, 'src', 'TerminalGlyphs.psd1'))
-    $vendorVersion = Confirm-NerdFontData
-    $nerd = Get-NerdGlyphSet
+    $vendorVersion = Confirm-NerdFontData -VendorPath $VendorPath
+    $nerd = Get-NerdGlyphSet -VendorPath $VendorPath
     if ($vendorVersion -ne $nerd.Version) {
         throw "vendor/nerd-fonts/manifest.json is for Nerd Fonts $vendorVersion but glyphnames.json is $($nerd.Version)."
     }
@@ -163,7 +165,7 @@ function Invoke-ModuleBuild {
     Write-Host "Built TerminalGlyphs $($manifest.ModuleVersion) -> $moduleDir"
 }
 
-Invoke-ModuleBuild -ThemesPath $ThemesPath -OutputPath $OutputPath
+Invoke-ModuleBuild -ThemesPath $ThemesPath -OutputPath $OutputPath -VendorPath $VendorPath
 
 if ($Task -eq 'Test') {
     Import-Module Pester -MinimumVersion 5.9.0 -MaximumVersion 5.99.99 -ErrorAction Stop
