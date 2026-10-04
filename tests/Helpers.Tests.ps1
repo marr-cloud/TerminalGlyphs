@@ -22,6 +22,12 @@ Describe 'vendored Nerd Fonts data' {
         (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash | Should -Be '893E03F5FB079036AE19A05B30985C40603909F5C663919DA0760DF86FEEEFD6'
         (Read-JsoncFile -Path $path)['fonts'].Count | Should -Be 72
     }
+
+    It 'includes the package checksums of the same release' {
+        $path = Join-Path $root 'vendor' 'nerd-fonts' 'SHA-256.txt'
+        (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash | Should -Be 'E03D7AD54547D83F1620719CBC89B5684BC0C6FB028160640AA322B5035A63FB'
+        @(Get-Content -LiteralPath $path | Where-Object { $_ -match '^[0-9a-f]{64}  \S+\.tar\.xz$' }).Count | Should -Be 72
+    }
 }
 
 Describe 'ConvertTo-AnsiSequence' {

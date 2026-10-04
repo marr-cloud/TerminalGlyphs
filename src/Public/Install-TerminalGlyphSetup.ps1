@@ -13,7 +13,9 @@ function Install-TerminalGlyphSetup {
         Each step runs even if another one fails, and the command returns one result per step. On Windows, fonts
         that were in use are replaced after you restart Windows.
     .PARAMETER Family
-        Nerd Fonts release packages to install or update, such as JetBrainsMono, FiraCode, CascadiaCode or Meslo.
+        Nerd Fonts to install or update. Use the release package (JetBrainsMono, FiraCode, CascadiaCode, Meslo), the
+        font name (CaskaydiaCove, MesloLGS) or the name shown in your terminal settings (JetBrainsMono Nerd Font Mono).
+        Press Tab to list the packages.
     .PARAMETER SkipFont
         Does not install, update or clean up fonts.
     .PARAMETER SkipProfile
@@ -22,10 +24,24 @@ function Install-TerminalGlyphSetup {
         Install-TerminalGlyphSetup
     .EXAMPLE
         Install-TerminalGlyphSetup -Family FiraCode -WhatIf
+    .EXAMPLE
+        Install-TerminalGlyphSetup -Family 'CaskaydiaCove Nerd Font Mono'
     #>
     [OutputType([pscustomobject])]
     [CmdletBinding(SupportsShouldProcess)]
     param(
+        [ArgumentCompleter({
+                # Completers receive (command, parameter, word to complete, ...). A quoted word arrives as 'Casc'.
+                $WordToComplete = ([string]$args[2]).Trim([char[]]"'`"")
+                # The module that owns the command in use, even when several versions are loaded.
+                $module = (Get-Command -Name $args[0] -CommandType Function -ErrorAction Ignore | Select-Object -First 1).Module
+                if (-not $module) { return }
+                $packages = & $module { (Read-NerdFontIndex)['packages'].Values } | Sort-Object -Unique
+                $pattern = [System.Management.Automation.WildcardPattern]::Escape($WordToComplete) + '*'
+                foreach ($package in ($packages | Where-Object { $_ -like $pattern })) {
+                    [System.Management.Automation.CompletionResult]::new($package, $package, 'ParameterValue', $package)
+                }
+            })]
         [string[]]$Family,
 
         [switch]$SkipFont,
@@ -34,13 +50,19 @@ function Install-TerminalGlyphSetup {
     )
 
     $ErrorActionPreference = 'Stop'
-    $nerdFonts = [System.IO.File]::ReadAllText($script:FontsPath) | ConvertFrom-Json -AsHashtable
+    $nerdFonts = Read-NerdFontIndex
     $version = [version]$nerdFonts['version']
     $packageMap = $nerdFonts['packages']
     $knownPackages = @($packageMap.Values | Sort-Object -Unique)
     $requested = foreach ($name in $Family) {
-        $match = $knownPackages | Where-Object { $_ -eq $name } | Select-Object -First 1
-        if (-not $match) { throw "Unknown Nerd Fonts package '$name'. Use a release package name such as JetBrainsMono, FiraCode, CascadiaCode, Hack or Meslo." }
+        $match = Resolve-NerdFontPackage -Name $name -PackageMap $packageMap
+        if (-not $match) {
+            $stem = ($name -replace '\s', '')
+            $stem = $stem.Substring(0, [Math]::Min(4, $stem.Length))
+            $similar = @(if ($stem) { $knownPackages | Where-Object { $_.Contains($stem, [System.StringComparison]::OrdinalIgnoreCase) } | Select-Object -First 5 })
+            $suggestion = if ($similar.Count -gt 0) { " Did you mean $($similar -join ', ')?" } else { ' Use a release package name such as JetBrainsMono, FiraCode, CascadiaCode, Hack or Meslo.' }
+            throw "Unknown Nerd Fonts package '$name'.$suggestion Press Tab after -Family to list the packages."
+        }
         $match
     }
 
@@ -74,7 +96,10 @@ function Install-TerminalGlyphSetup {
                 }
             }
 
-            $installed = @(Get-NerdFontInstallation -FontDirectory $location.Directory -PackageMap $packageMap -MinimumVersion $version)
+            # Per-user folders are updated in place (Directory first; on Linux also ~/.fonts).
+            $userDirectories = @($location.UserDirectory | Where-Object { $_ })
+            if ($userDirectories.Count -eq 0) { $userDirectories = @($location.Directory) }
+            $installed = @(Get-NerdFontInstallation -FontDirectory $userDirectories -PackageMap $packageMap -MinimumVersion $version)
             # Fonts installed for all users are only reported: changing them needs admin rights.
             $system = @(foreach ($systemDirectory in @($location.SystemDirectory | Where-Object { $_ })) {
                     Get-NerdFontInstallation -FontDirectory $systemDirectory -PackageMap $packageMap -MinimumVersion $version
@@ -127,7 +152,7 @@ function Install-TerminalGlyphSetup {
                         $work = [System.IO.Path]::Combine([System.IO.Path]::GetTempPath(), "terminalglyphs-$([guid]::NewGuid())")
                         [System.IO.Directory]::CreateDirectory($work) | Out-Null
                     }
-                    $files = @(Save-NerdFontRelease -Package $package -Version $version.ToString() -Destination $work)
+                    $files = @(Save-NerdFontRelease -Package $package -Version $version.ToString() -ExpectedHash $nerdFonts['archives'][$package] -Destination $work)
                     $target = if ($location.Platform -eq 'Linux') { [System.IO.Path]::Combine($location.Directory, 'NerdFonts', $package) } else { $location.Directory }
                     $installedFiles = @()
                     if ($current) { $installedFiles = [string[]]$current.Files }
@@ -153,7 +178,7 @@ function Install-TerminalGlyphSetup {
                     & $newStep $stepName 'Error' $_.Exception.Message
                 }
             }
-            if ($changed -gt 0 -and $location.Platform -eq 'Linux' -and -not (Invoke-FontCacheRefresh -Directory $location.Directory)) {
+            if ($changed -gt 0 -and $location.Platform -eq 'Linux' -and -not (Invoke-FontCacheRefresh -Directory $userDirectories)) {
                 Write-Warning -Message 'TerminalGlyphs: fc-cache was not found or failed; sign out and back in to see the new fonts.'
             }
         } catch {

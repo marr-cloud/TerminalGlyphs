@@ -6,6 +6,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-10-04
+
+### Added
+
+- `-Family` accepts font names (`CaskaydiaCove`, `MesloLGS`, `JetBrainsMonoNL`) and the names shown in terminal
+  settings (`'JetBrainsMono Nerd Font Mono'`), suggests similar packages for unknown names, and completes the
+  release packages with Tab.
+
+### Changed
+
+- Downloads are checked against the Nerd Fonts 3.5.1 checksums shipped with the module, instead of a `SHA-256.txt`
+  downloaded from the same release.
+- On Linux, Nerd Fonts in `~/.fonts` are updated in place instead of being reported as installed for all users.
+
+### Fixed
+
+- Replaced font files in subfolders of the font folder are cleaned up after a restart too.
+- When `tar` cannot extract a package on Linux or macOS and `xz` is missing, the error says to install it.
+
 ## [0.2.0] - 2026-10-04
 
 ### Added

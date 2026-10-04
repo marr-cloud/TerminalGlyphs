@@ -70,11 +70,18 @@ Describe 'Get-FontLocation' {
         } elseif ($IsMacOS) {
             @('/Library/Fonts')
         } else {
-            @('/usr/share/fonts', '/usr/local/share/fonts', (Join-Path $HOME '.fonts'))
+            @('/usr/share/fonts', '/usr/local/share/fonts')
         }
         $location = Get-FontLocation
         $location.SystemDirectory | Should -BeOfType [string]
         @($location.SystemDirectory) | Should -Be $expected
+    }
+
+    It 'returns the per-user folders to scan, starting with the install folder' {
+        $location = Get-FontLocation
+        $expected = if ($IsLinux) { @($location.Directory, (Join-Path $HOME '.fonts')) } else { @($location.Directory) }
+        $location.UserDirectory | Should -BeOfType [string]
+        @($location.UserDirectory) | Should -Be $expected
     }
 
     It 'honors XDG_DATA_HOME on Linux' -Skip:(-not $IsLinux) {
@@ -161,12 +168,34 @@ Describe 'Get-NerdFontInstallation' {
     It 'returns nothing for a missing folder' {
         Get-NerdFontInstallation -FontDirectory (Join-Path $TestDrive 'nope') -PackageMap $map -MinimumVersion '3.5.1' | Should -BeNullOrEmpty
     }
+
+    It 'groups a family spread over several folders and skips missing ones' {
+        $first = Join-Path $TestDrive 'multi-a'
+        $second = Join-Path $TestDrive 'multi-b'
+        New-TestFont -Path (Join-Path $first 'JetBrainsMonoNerdFontMono-Regular.ttf') | Out-Null
+        New-TestFont -Path (Join-Path $second 'JetBrainsMonoNerdFont-Bold.ttf') -Version 'Version 2.304;Nerd Fonts 3.0.2' | Out-Null
+        $found = @(Get-NerdFontInstallation -FontDirectory $first, (Join-Path $TestDrive 'missing'), $second -PackageMap $map -MinimumVersion '3.5.1')
+        $found.Count | Should -Be 1
+        $found[0].Files.Count | Should -Be 2
+        $found[0].Version | Should -Be ([version]'3.0.2')
+        $found[0].IsOutdated | Should -BeTrue
+    }
+
+    It 'reads a folder listed twice only once' {
+        $folder = Join-Path $TestDrive 'twice'
+        New-TestFont -Path (Join-Path $folder 'JetBrainsMonoNerdFontMono-Regular.ttf') | Out-Null
+        $found = @(Get-NerdFontInstallation -FontDirectory $folder, (Join-Path $folder '.') -PackageMap $map -MinimumVersion '3.5.1')
+        $found[0].Files.Count | Should -Be 1
+    }
 }
 
 Describe 'Save-NerdFontRelease' {
     BeforeAll {
         $script:Release = New-FakeNerdFontRelease -Root (Join-Path $TestDrive 'release') -Package 'JetBrainsMono' -FontName 'JetBrainsMonoNerdFontMono-Regular.ttf', 'JetBrainsMonoNerdFont-Bold.ttf'
-        New-FakeNerdFontRelease -Root $script:Release -Package 'Hack' -FontName 'HackNerdFont-Regular.ttf' | Out-Null
+        [System.IO.File]::WriteAllText((Join-Path $script:Release 'Broken.tar.xz'), 'not an archive')
+        function Get-ReleaseHash([string]$Package) {
+            (Get-FileHash -LiteralPath (Join-Path $script:Release "$Package.tar.xz") -Algorithm SHA256).Hash.ToLowerInvariant()
+        }
     }
 
     BeforeEach {
@@ -175,38 +204,33 @@ Describe 'Save-NerdFontRelease' {
         [System.IO.Directory]::CreateDirectory($work) | Out-Null
     }
 
-    It 'returns the extracted fonts after checking the SHA-256' {
-        $files = @(Save-NerdFontRelease -Package 'JetBrainsMono' -Version '3.5.1' -Destination $work)
+    It 'downloads only the archive and returns its fonts after checking the SHA-256' {
+        $files = @(Save-NerdFontRelease -Package 'JetBrainsMono' -Version '3.5.1' -ExpectedHash (Get-ReleaseHash 'JetBrainsMono') -Destination $work)
         $files.Count | Should -Be 2
         [System.IO.Path]::GetFileName($files[0]) | Should -Be 'JetBrainsMonoNerdFont-Bold.ttf'
         $files | ForEach-Object { $_ | Should -Exist }
         (Read-FontInfo -Path $files[1]).FullName | Should -Be 'JetBrainsMonoNerdFontMono-Regular New'
+        Should -Invoke Invoke-NerdFontDownload -Times 1 -Exactly
         Should -Invoke Invoke-NerdFontDownload -Times 1 -Exactly -ParameterFilter { $Uri -eq 'https://github.com/ryanoasis/nerd-fonts/releases/download/v3.5.1/JetBrainsMono.tar.xz' }
-        Should -Invoke Invoke-NerdFontDownload -Times 1 -Exactly -ParameterFilter { $Uri -eq 'https://github.com/ryanoasis/nerd-fonts/releases/download/v3.5.1/SHA-256.txt' }
-    }
-
-    It 'downloads SHA-256.txt once per destination' {
-        Save-NerdFontRelease -Package 'JetBrainsMono' -Version '3.5.1' -Destination $work | Out-Null
-        Save-NerdFontRelease -Package 'Hack' -Version '3.5.1' -Destination $work | Out-Null
-        Should -Invoke Invoke-NerdFontDownload -Times 1 -Exactly -ParameterFilter { $Uri -like '*/SHA-256.txt' }
     }
 
     It 'refuses an archive whose checksum does not match' {
-        Mock Invoke-NerdFontDownload {
-            if ($Uri -like '*/SHA-256.txt') { Set-Content -LiteralPath $OutFile -Value "$('0' * 64)  JetBrainsMono.tar.xz" }
-            else { Copy-Item -LiteralPath (Join-Path $script:Release 'JetBrainsMono.tar.xz') -Destination $OutFile }
-        }
-        { Save-NerdFontRelease -Package 'JetBrainsMono' -Version '3.5.1' -Destination $work } | Should -Throw '*Checksum mismatch*'
+        { Save-NerdFontRelease -Package 'JetBrainsMono' -Version '3.5.1' -ExpectedHash ('0' * 64) -Destination $work } | Should -Throw '*Checksum mismatch*'
         Join-Path $work 'JetBrainsMono' | Should -Not -Exist
-    }
-
-    It 'fails when the package is not in SHA-256.txt' {
-        { Save-NerdFontRelease -Package 'Nope' -Version '3.5.1' -Destination $work } | Should -Throw '*no entry for Nope.tar.xz*'
     }
 
     It 'lets download errors through' {
         Mock Invoke-NerdFontDownload { throw 'network down' }
-        { Save-NerdFontRelease -Package 'Hack' -Version '3.5.1' -Destination $work } | Should -Throw '*network down*'
+        { Save-NerdFontRelease -Package 'JetBrainsMono' -Version '3.5.1' -ExpectedHash (Get-ReleaseHash 'JetBrainsMono') -Destination $work } | Should -Throw '*network down*'
+    }
+
+    It 'reports an archive that tar cannot extract' {
+        { Save-NerdFontRelease -Package 'Broken' -Version '3.5.1' -ExpectedHash (Get-ReleaseHash 'Broken') -Destination $work } | Should -Throw '*tar could not extract Broken.tar.xz*'
+    }
+
+    It 'suggests installing xz when tar cannot extract and xz is missing' -Skip:$IsWindows {
+        Mock Get-Command { $null } -ParameterFilter { $Name -eq 'xz' }
+        { Save-NerdFontRelease -Package 'Broken' -Version '3.5.1' -ExpectedHash (Get-ReleaseHash 'Broken') -Destination $work } | Should -Throw '*install xz*'
     }
 }
 
@@ -214,6 +238,11 @@ Describe 'Invoke-FontCacheRefresh' {
     It 'returns whether fc-cache ran' {
         $expected = [bool](Get-Command -Name 'fc-cache' -CommandType Application -ErrorAction Ignore)
         Invoke-FontCacheRefresh -Directory $TestDrive | Should -Be $expected
+    }
+
+    It 'refreshes several folders and skips missing ones' {
+        $expected = [bool](Get-Command -Name 'fc-cache' -CommandType Application -ErrorAction Ignore)
+        Invoke-FontCacheRefresh -Directory $TestDrive, (Join-Path $TestDrive 'missing') | Should -Be $expected
     }
 }
 
@@ -284,6 +313,23 @@ Describe 'Install-NerdFontFile' {
         $case.Fonts | Should -Not -Exist
     }
 
+    It 'replaces every installed copy of a file, such as ~/.fonts and ~/.local/share/fonts on Linux' {
+        $case = New-Case
+        $legacy = New-TestFont -Path (Join-Path $case.Root '.fonts' 'TestNerdFontMono-Regular.ttf') -FullName 'Old A'
+        $current = New-TestFont -Path (Join-Path $case.Root '.local' 'TestNerdFontMono-Regular.ttf') -FullName 'Old B'
+        $result = Install-NerdFontFile -SourceFile $case.Source[0] -TargetDirectory $case.Fonts -Platform Linux -InstalledFile $legacy, $current -UpdateOnly
+        $result.Replaced | Should -Be 2
+        (Read-FontInfo -Path $legacy).FullName | Should -Be 'Test NFM Regular'
+        (Read-FontInfo -Path $current).FullName | Should -Be 'Test NFM Regular'
+    }
+
+    It 'replaces a path listed twice only once' {
+        $case = New-Case
+        $installed = New-TestFont -Path (Join-Path $case.Fonts 'TestNerdFontMono-Regular.ttf') -FullName 'Old'
+        $result = Install-NerdFontFile -SourceFile $case.Source[0] -TargetDirectory $case.Fonts -Platform Linux -InstalledFile $installed, $installed -UpdateOnly
+        $result.Replaced | Should -Be 1
+    }
+
     It 'on Windows, renames a file in use and copies the new one' {
         $case = New-Case
         $installed = New-TestFont -Path (Join-Path $case.Fonts 'TestNerdFontMono-Regular.ttf') -FullName 'Old'
@@ -343,6 +389,17 @@ Describe 'Remove-StaleFontFile' {
         $result.Removed | Should -Be 1
         $result.Pending | Should -Be 0
         @(Get-ChildItem -LiteralPath $dir -Filter '*.old-nerdfont').Count | Should -Be 0
+    }
+
+    It 'also cleans renamed files in subfolders' {
+        $root = Join-Path $TestDrive "stale-root-$([guid]::NewGuid())"
+        [System.IO.Directory]::CreateDirectory($root) | Out-Null
+        $sub = New-StaleCase -RenamedAt $now.AddHours(-2)
+        Move-Item -LiteralPath $sub -Destination (Join-Path $root 'JetBrainsMono')
+        $result = Remove-StaleFontFile -FontDirectory $root -BootTime $now.AddHours(-1)
+        $result.Removed | Should -Be 1
+        @(Get-ChildItem -LiteralPath $root -Recurse -Filter '*.old-nerdfont').Count | Should -Be 0
+        Join-Path $root 'JetBrainsMono' 'A.ttf' | Should -Exist
     }
 
     It 'keeps every renamed copy until Windows restarts' {
@@ -423,5 +480,31 @@ Describe 'Remove-StaleFontFile approved changes' {
         Remove-StaleFontFile -FontDirectory $dir -BootTime $now.AddHours(-1) | Out-Null
         Should -Invoke Remove-Item -Times 1 -Exactly -ParameterFilter { $PesterBoundParameters['Confirm'] -eq $false -and $PesterBoundParameters['WhatIf'] -eq $false }
         Should -Invoke Move-Item -Times 1 -Exactly -ParameterFilter { $PesterBoundParameters['Confirm'] -eq $false -and $PesterBoundParameters['WhatIf'] -eq $false }
+    }
+}
+Describe 'Resolve-NerdFontPackage' {
+    BeforeAll {
+        $map = @{ JetBrainsMono = 'JetBrainsMono'; CaskaydiaCove = 'CascadiaCode'; CaskaydiaMono = 'CascadiaMono'; MesloLG = 'Meslo'; FiraCode = 'FiraCode'; Hack = 'Hack' }
+    }
+
+    It 'resolves <Name> to <Expected>' -ForEach @(
+        @{ Name = 'CascadiaCode'; Expected = 'CascadiaCode' }
+        @{ Name = 'cascadiacode'; Expected = 'CascadiaCode' }
+        @{ Name = 'CaskaydiaCove'; Expected = 'CascadiaCode' }
+        @{ Name = 'CaskaydiaMono'; Expected = 'CascadiaMono' }
+        @{ Name = 'JetBrainsMono Nerd Font Mono'; Expected = 'JetBrainsMono' }
+        @{ Name = 'JetBrainsMono NFM'; Expected = 'JetBrainsMono' }
+        @{ Name = 'JetBrainsMonoNL'; Expected = 'JetBrainsMono' }
+        @{ Name = 'JetBrainsMonoNL Nerd Font'; Expected = 'JetBrainsMono' }
+        @{ Name = 'Meslo'; Expected = 'Meslo' }
+        @{ Name = 'MesloLGS'; Expected = 'Meslo' }
+        @{ Name = 'MesloLGM NF'; Expected = 'Meslo' }
+        @{ Name = 'MesloLGLDZ Nerd Font Mono'; Expected = 'Meslo' }
+    ) {
+        Resolve-NerdFontPackage -Name $Name -PackageMap $map | Should -BeExactly $Expected
+    }
+
+    It 'returns nothing for <Name>' -ForEach @(@{ Name = 'Nope' }, @{ Name = 'HackXYZ' }, @{ Name = 'Nerd Font' }, @{ Name = '' }) {
+        Resolve-NerdFontPackage -Name $Name -PackageMap $map | Should -BeNullOrEmpty
     }
 }

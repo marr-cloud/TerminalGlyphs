@@ -57,6 +57,20 @@ Describe 'Install-TerminalGlyphSetup' {
         $result.Notes | Should -Contain 'Open a new terminal to load TerminalGlyphs.'
     }
 
+    It 'scans and refreshes every per-user folder, such as ~/.fonts on Linux' {
+        $dotFonts = Join-Path $TestDrive '.fonts'
+        Mock -ModuleName TerminalGlyphs Get-FontLocation { [pscustomobject]@{ Platform = 'Linux'; Directory = $fontDir; UserDirectory = [string[]]@($fontDir, $dotFonts); SystemDirectory = [string[]]@() } }
+        Invoke-Setup | Out-Null
+        Should -Invoke -ModuleName TerminalGlyphs Get-NerdFontInstallation -Times 1 -Exactly -ParameterFilter { @($FontDirectory).Count -eq 2 -and $FontDirectory -contains $dotFonts }
+        Should -Invoke -ModuleName TerminalGlyphs Invoke-FontCacheRefresh -Times 1 -Exactly -ParameterFilter { $Directory -contains $dotFonts -and $Directory -contains $fontDir }
+        Should -Invoke -ModuleName TerminalGlyphs Install-NerdFontFile -Times 1 -Exactly -ParameterFilter { $TargetDirectory -eq (Join-Path $fontDir 'NerdFonts' 'JetBrainsMono') }
+    }
+
+    It 'checks each package against the checksum shipped with the module' {
+        Invoke-Setup | Out-Null
+        Should -Invoke -ModuleName TerminalGlyphs Save-NerdFontRelease -Times 1 -Exactly -ParameterFilter { $ExpectedHash -eq '04d5e8f903693f9dd13e16f867e994834e681eb3c72c0d337a770dcda09010cf' }
+    }
+
     It 'updates only the outdated families it finds' {
         Mock -ModuleName TerminalGlyphs Get-NerdFontInstallation { New-Family 'FiraCode' '3.0.2' $true; New-Family 'Hack' '3.5.1' $false }
         $result = Invoke-Setup
@@ -148,6 +162,35 @@ Describe 'Install-TerminalGlyphSetup' {
         { Install-TerminalGlyphSetup -Family 'NoSuchFont' } | Should -Throw '*Unknown Nerd Fonts package*NoSuchFont*'
         Should -Invoke -ModuleName TerminalGlyphs Get-FontLocation -Times 0
         Should -Invoke -ModuleName TerminalGlyphs Update-ProfileImport -Times 0
+    }
+
+    It 'suggests similar packages for an unknown -Family' {
+        { Install-TerminalGlyphSetup -Family 'JetBrains' } | Should -Throw '*Did you mean*JetBrainsMono*'
+    }
+
+    It 'accepts the font name in -Family (<Name>)' -ForEach @(
+        @{ Name = 'CaskaydiaCove'; Expected = 'CascadiaCode' }
+        @{ Name = 'MesloLGS Nerd Font Mono'; Expected = 'Meslo' }
+    ) {
+        Invoke-Setup @{ Family = $Name } | Out-Null
+        Should -Invoke -ModuleName TerminalGlyphs Save-NerdFontRelease -Times 1 -Exactly -ParameterFilter { $Package -ceq $Expected }
+    }
+
+    It 'completes -Family with the release packages' {
+        $line = 'Install-TerminalGlyphSetup -Family Casc'
+        $completions = (TabExpansion2 -inputScript $line -cursorColumn $line.Length).CompletionMatches.CompletionText
+        $completions | Should -Contain 'CascadiaCode'
+        $completions | Should -Contain 'CascadiaMono'
+        $completions | Should -Not -Contain 'JetBrainsMono'
+    }
+
+    It 'completes -Family after an opening quote' {
+        $line = "Install-TerminalGlyphSetup -Family 'Casc"
+        (TabExpansion2 -inputScript $line -cursorColumn $line.Length).CompletionMatches.CompletionText | Should -Contain 'CascadiaCode'
+    }
+
+    It 'gives the friendly error for a -Family with wildcard characters' {
+        { Install-TerminalGlyphSetup -Family 'Jet[' } | Should -Throw '*Unknown Nerd Fonts package*Jet`[*'
     }
 
     It 'keeps going and removes its temporary folder when a download fails' {
@@ -248,6 +291,9 @@ Describe 'Install-TerminalGlyphSetup' {
 Describe 'Install-TerminalGlyphSetup end to end' {
     BeforeAll {
         $script:Release = New-FakeNerdFontRelease -Root (Join-Path $TestDrive 'e2e-release') -Package 'JetBrainsMono' -FontName 'JetBrainsMonoNerdFontMono-Regular.ttf', 'JetBrainsMonoNerdFont-Regular.ttf'
+        # The built index holds the real release checksums; the fake release needs its own.
+        $script:Index = Get-Content -LiteralPath (Join-Path (Split-Path -Parent (Get-BuiltManifestPath)) 'nerdfonts.json') -Raw | ConvertFrom-Json -AsHashtable
+        $script:Index['archives']['JetBrainsMono'] = (Get-FileHash -LiteralPath (Join-Path $script:Release 'JetBrainsMono.tar.xz') -Algorithm SHA256).Hash.ToLowerInvariant()
     }
 
     BeforeEach {
@@ -262,6 +308,7 @@ Describe 'Install-TerminalGlyphSetup end to end' {
         Mock -ModuleName TerminalGlyphs Get-FontLocation { [pscustomobject]@{ Platform = 'Linux'; Directory = $script:Fonts } }
         Mock -ModuleName TerminalGlyphs Invoke-FontCacheRefresh { $true }
         Mock -ModuleName TerminalGlyphs Invoke-NerdFontDownload { Copy-Item -LiteralPath (Join-Path $script:Release ($Uri -split '/')[-1]) -Destination $OutFile }
+        Mock -ModuleName TerminalGlyphs Read-NerdFontIndex { $script:Index }
     }
 
     AfterEach {

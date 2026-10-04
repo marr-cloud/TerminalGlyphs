@@ -118,7 +118,15 @@ function Invoke-ModuleBuild {
     $fontIndex = Read-JsoncFile -Path ([System.IO.Path]::Combine($root, 'vendor', 'nerd-fonts', 'fonts.json'))
     $packages = [System.Collections.Generic.SortedDictionary[string, string]]::new([System.StringComparer]::Ordinal)
     foreach ($font in $fontIndex['fonts']) { $packages[$font['patchedName'].Replace(' ', '')] = $font['folderName'] }
-    $nerdFonts = [ordered]@{ version = $nerd.Version; packages = $packages }
+    # Checksums ship with the module, so a download is never checked against a file from the same server.
+    $archives = [System.Collections.Generic.SortedDictionary[string, string]]::new([System.StringComparer]::Ordinal)
+    foreach ($line in [System.IO.File]::ReadAllLines([System.IO.Path]::Combine($root, 'vendor', 'nerd-fonts', 'SHA-256.txt'))) {
+        if ($line -match '^([0-9a-f]{64})\s+(\S+)\.tar\.xz$') { $archives[$Matches[2]] = $Matches[1] }
+    }
+    foreach ($package in $packages.Values) {
+        if (-not $archives.ContainsKey($package)) { throw "vendor/nerd-fonts/SHA-256.txt has no checksum for $package.tar.xz" }
+    }
+    $nerdFonts = [ordered]@{ version = $nerd.Version; packages = $packages; archives = $archives }
     [System.IO.File]::WriteAllText([System.IO.Path]::Combine($moduleDir, 'nerdfonts.json'), ($nerdFonts | ConvertTo-Json -Compress), $utf8)
 
     $psm1 = [System.Text.StringBuilder]::new()
