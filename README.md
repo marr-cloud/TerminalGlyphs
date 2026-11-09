@@ -1,5 +1,7 @@
 # TerminalGlyphs
 
+[![Mentioned in Awesome PowerShell Modules](https://awesome.re/mentioned-badge.svg)](https://github.com/markwragg/awesome-powershell-modules#readme)
+
 Nerd Font icons and colors for files and folders in `Get-ChildItem`, for PowerShell 7.4+.
 
 TerminalGlyphs is a reimplementation of [Terminal-Icons](https://github.com/devblackops/Terminal-Icons), which has not
